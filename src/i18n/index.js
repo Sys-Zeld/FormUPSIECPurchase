@@ -1,0 +1,180 @@
+const SUPPORTED_LANGS = ["pt", "en"];
+const DEFAULT_LANG = "pt";
+
+const messages = {
+  pt: {
+    "app.titleSuffix": "Anexo D UPS",
+    "app.sectionNotFound": "Secao nao encontrada.",
+    "app.submissionNotFound": "Submissao nao encontrada.",
+    "app.schemaMissing": "Schema sem secoes. Verifique src/schema/annexD.purchaseTable.json.",
+    "app.reviewTitle": "Resumo",
+    "app.invalidRecipientEmail": "E-mail de destino invalido.",
+    "app.emailSendError": "Falha ao enviar e-mail: {message}",
+    "app.pdfGenerateError": "Falha ao gerar PDF: {message}",
+    "app.csrfExpired": "Sessao expirada. Recarregue a pagina.",
+    "admin.loginTitle": "Login administrativo",
+    "admin.invalidCredentials": "Usuario ou senha invalidos.",
+    "admin.username": "Usuario",
+    "admin.password": "Senha",
+    "admin.loginButton": "Entrar",
+    "admin.logoutButton": "Sair",
+    "admin.pageTitle": "Gerenciamento de tokens",
+    "admin.pageSubtitle": "Submissoes cadastradas com comprador e contato.",
+    "admin.tableToken": "Token",
+    "admin.tableBuyer": "Comprador",
+    "admin.tableContact": "Contato",
+    "admin.tableStatus": "Status",
+    "admin.tableUpdatedAt": "Atualizado em",
+    "admin.tableActions": "Acoes",
+    "admin.noRecords": "Nenhum token cadastrado.",
+    "admin.viewButton": "Abrir",
+    "admin.deleteButton": "Excluir",
+    "admin.confirmDelete": "Deseja realmente excluir este token?",
+    "admin.deletedSuccess": "Token excluido com sucesso.",
+    "admin.invalidId": "ID invalido.",
+    "head.langLabel": "Idioma",
+    "head.langPt": "Portugues",
+    "head.langEn": "English",
+    "section.headerTitle": "Purchase Table - Anexo D (UPS)",
+    "section.goToReview": "Ir para resumo",
+    "section.progress": "Secao {current} de {total}",
+    "section.savedDraft": "Rascunho salvo.",
+    "section.previous": "Voltar",
+    "section.saveDraft": "Salvar rascunho",
+    "section.finish": "Finalizar",
+    "section.next": "Proximo",
+    "review.headerTitle": "Resumo da submissao",
+    "review.backToForm": "Voltar ao formulario",
+    "review.exportJson": "Exportar JSON",
+    "review.downloadPdf": "Baixar PDF",
+    "review.emailSent": "E-mail enviado com sucesso.",
+    "review.tableField": "Campo",
+    "review.tableValue": "Valor",
+    "review.tableUnit": "Unidade",
+    "review.sendByEmail": "Enviar por e-mail",
+    "review.recipient": "Destinatario",
+    "review.sendEmailPdf": "Enviar e-mail + PDF",
+    "field.selectPlaceholder": "Selecione...",
+    "field.checkboxSelected": "Selecionado",
+    "validation.required": "Campo obrigatorio.",
+    "validation.invalidNumber": "Valor numerico invalido.",
+    "validation.minValue": "Valor minimo: {value}.",
+    "validation.maxValue": "Valor maximo: {value}.",
+    "validation.invalidFormat": "Formato invalido.",
+    "validation.invalidSelection": "Selecao invalida.",
+    "email.summaryTitle": "UPS Purchase Table - Anexo D",
+    "email.tableField": "Campo",
+    "email.tableValue": "Valor",
+    "email.tableUnit": "Unidade",
+    "email.subject": "Submissao UPS Anexo D {token}",
+    "pdf.title": "Purchase Table - Anexo D (UPS)",
+    "pdf.submissionToken": "Token da submissao: {token}",
+    "pdf.accessLink": "Link de acesso: {link}",
+    "pdf.qrHint": "Escaneie para abrir",
+    "pdf.status": "Status: {status}",
+    "pdf.createdAt": "Criado em: {value}",
+    "pdf.updatedAt": "Atualizado em: {value}"
+  },
+  en: {
+    "app.titleSuffix": "UPS Annex D",
+    "app.sectionNotFound": "Section not found.",
+    "app.submissionNotFound": "Submission not found.",
+    "app.schemaMissing": "Schema has no sections. Check src/schema/annexD.purchaseTable.json.",
+    "app.reviewTitle": "Review",
+    "app.invalidRecipientEmail": "Invalid destination e-mail.",
+    "app.emailSendError": "Failed to send e-mail: {message}",
+    "app.pdfGenerateError": "Failed to generate PDF: {message}",
+    "app.csrfExpired": "Session expired. Reload the page.",
+    "admin.loginTitle": "Admin login",
+    "admin.invalidCredentials": "Invalid username or password.",
+    "admin.username": "Username",
+    "admin.password": "Password",
+    "admin.loginButton": "Sign in",
+    "admin.logoutButton": "Sign out",
+    "admin.pageTitle": "Token management",
+    "admin.pageSubtitle": "Registered submissions with purchaser and contact.",
+    "admin.tableToken": "Token",
+    "admin.tableBuyer": "Purchaser",
+    "admin.tableContact": "Contact",
+    "admin.tableStatus": "Status",
+    "admin.tableUpdatedAt": "Updated at",
+    "admin.tableActions": "Actions",
+    "admin.noRecords": "No tokens registered.",
+    "admin.viewButton": "Open",
+    "admin.deleteButton": "Delete",
+    "admin.confirmDelete": "Are you sure you want to delete this token?",
+    "admin.deletedSuccess": "Token deleted successfully.",
+    "admin.invalidId": "Invalid ID.",
+    "head.langLabel": "Language",
+    "head.langPt": "Portuguese",
+    "head.langEn": "English",
+    "section.headerTitle": "Purchase Table - Annex D (UPS)",
+    "section.goToReview": "Go to review",
+    "section.progress": "Section {current} of {total}",
+    "section.savedDraft": "Draft saved.",
+    "section.previous": "Previous",
+    "section.saveDraft": "Save draft",
+    "section.finish": "Finish",
+    "section.next": "Next",
+    "review.headerTitle": "Submission review",
+    "review.backToForm": "Back to form",
+    "review.exportJson": "Export JSON",
+    "review.downloadPdf": "Download PDF",
+    "review.emailSent": "E-mail sent successfully.",
+    "review.tableField": "Field",
+    "review.tableValue": "Value",
+    "review.tableUnit": "Unit",
+    "review.sendByEmail": "Send by e-mail",
+    "review.recipient": "Recipient",
+    "review.sendEmailPdf": "Send e-mail + PDF",
+    "field.selectPlaceholder": "Select...",
+    "field.checkboxSelected": "Selected",
+    "validation.required": "Required field.",
+    "validation.invalidNumber": "Invalid numeric value.",
+    "validation.minValue": "Minimum value: {value}.",
+    "validation.maxValue": "Maximum value: {value}.",
+    "validation.invalidFormat": "Invalid format.",
+    "validation.invalidSelection": "Invalid selection.",
+    "email.summaryTitle": "UPS Purchase Table - Annex D",
+    "email.tableField": "Field",
+    "email.tableValue": "Value",
+    "email.tableUnit": "Unit",
+    "email.subject": "UPS Annex D Submission {token}",
+    "pdf.title": "Purchase Table - Annex D (UPS)",
+    "pdf.submissionToken": "Submission token: {token}",
+    "pdf.accessLink": "Access link: {link}",
+    "pdf.qrHint": "Scan to open",
+    "pdf.status": "Status: {status}",
+    "pdf.createdAt": "Created at: {value}",
+    "pdf.updatedAt": "Updated at: {value}"
+  }
+};
+
+function normalizeLang(input) {
+  const raw = String(input || "").toLowerCase();
+  if (raw.startsWith("pt")) return "pt";
+  if (raw.startsWith("en")) return "en";
+  return DEFAULT_LANG;
+}
+
+function interpolate(template, params) {
+  return String(template).replace(/\{(\w+)\}/g, (_, key) =>
+    params && params[key] !== undefined ? String(params[key]) : `{${key}}`
+  );
+}
+
+function createTranslator(lang) {
+  const selected = messages[normalizeLang(lang)] || messages[DEFAULT_LANG];
+  const fallback = messages[DEFAULT_LANG];
+  return (key, params = {}) => {
+    const base = selected[key] || fallback[key] || key;
+    return interpolate(base, params);
+  };
+}
+
+module.exports = {
+  SUPPORTED_LANGS,
+  DEFAULT_LANG,
+  normalizeLang,
+  createTranslator
+};

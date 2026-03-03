@@ -1,0 +1,57 @@
+<%
+  const value = answersMap[field.id] || "";
+  const fieldErrors = errors[field.id] || [];
+  const isInvalid = fieldErrors.length > 0 ? "is-invalid" : "";
+  const requiredAttr = field.required ? "required" : "";
+  const placeholder = field.unit ? `${field.label} (${field.unit})` : field.label;
+%>
+<div class="col-12 col-lg-6 form-field">
+  <label for="<%= field.id %>" class="form-label fw-semibold">
+    <%= field.label %>
+    <% if (field.required) { %><span class="text-danger">*</span><% } %>
+  </label>
+
+  <% if (field.type === "textarea") { %>
+    <textarea id="<%= field.id %>" name="<%= field.id %>" class="form-control <%= isInvalid %>" rows="3" placeholder="<%= placeholder %>" <%= requiredAttr %>><%= value %></textarea>
+  <% } else if (field.type === "select") { %>
+    <select id="<%= field.id %>" name="<%= field.id %>" class="form-select <%= isInvalid %>" <%= requiredAttr %>>
+      <option value=""><%= t("field.selectPlaceholder") %></option>
+      <% (field.options || []).forEach((opt) => { %>
+        <option value="<%= opt %>" <%= value === opt ? "selected" : "" %>><%= (field.optionDisplay && field.optionDisplay[opt]) || opt %></option>
+      <% }) %>
+    </select>
+  <% } else if (field.type === "radio") { %>
+    <div class="d-flex gap-3 flex-wrap pt-1">
+      <% (field.options || []).forEach((opt) => { %>
+        <div class="form-check">
+          <input class="form-check-input <%= isInvalid %>" type="radio" name="<%= field.id %>" id="<%= `${field.id}_${opt}` %>" value="<%= opt %>" <%= value === opt ? "checked" : "" %> />
+          <label class="form-check-label" for="<%= `${field.id}_${opt}` %>"><%= (field.optionDisplay && field.optionDisplay[opt]) || opt %></label>
+        </div>
+      <% }) %>
+    </div>
+  <% } else if (field.type === "checkbox") { %>
+    <div class="form-check mt-2">
+      <input class="form-check-input <%= isInvalid %>" type="checkbox" name="<%= field.id %>" id="<%= field.id %>" <%= value === "true" ? "checked" : "" %> />
+      <label class="form-check-label" for="<%= field.id %>"><%= t("field.checkboxSelected") %></label>
+    </div>
+  <% } else { %>
+    <input
+      id="<%= field.id %>"
+      name="<%= field.id %>"
+      type="<%= field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text' %>"
+      class="form-control <%= isInvalid %>"
+      value="<%= value %>"
+      placeholder="<%= placeholder %>"
+      <%= requiredAttr %>
+      <% if (field.type === "number" && field.validation && field.validation.min !== undefined) { %> min="<%= field.validation.min %>" <% } %>
+      <% if (field.type === "number" && field.validation && field.validation.max !== undefined) { %> max="<%= field.validation.max %>" <% } %>
+      <% if (field.validation && field.validation.pattern) { %> pattern="<%= field.validation.pattern %>" <% } %>
+    />
+  <% } %>
+
+  <% if (field.help) { %><div class="form-text"><%= field.help %></div><% } %>
+  <% if (field.unit) { %><div class="unit-chip"><%= field.unit %></div><% } %>
+  <% if (fieldErrors.length > 0) { %>
+    <div class="invalid-feedback d-block"><%= fieldErrors[0] %></div>
+  <% } %>
+</div>

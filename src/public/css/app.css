@@ -1,0 +1,212 @@
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap");
+
+:root {
+  --bg-1: #f4f8ff;
+  --bg-2: #edf3fb;
+  --ink: #1e2b3f;
+  --muted: #6a778b;
+  --surface: #ffffff;
+  --surface-soft: #f7fafc;
+  --line: #d8e2ee;
+  --brand: #1e5ea8;
+  --brand-strong: #0f4d93;
+  --success: #1f8a63;
+  --radius: 14px;
+  --shadow: 0 10px 24px rgba(26, 45, 75, 0.08);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body.app-shell {
+  margin: 0;
+  min-height: 100vh;
+  font-family: "Space Grotesk", "Segoe UI", Tahoma, sans-serif;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 14% 5%, rgba(30, 94, 168, 0.12) 0, transparent 32%),
+    radial-gradient(circle at 88% 0%, rgba(31, 138, 99, 0.1) 0, transparent 26%),
+    linear-gradient(180deg, var(--bg-1) 0%, var(--bg-2) 100%);
+}
+
+.app-main {
+  max-width: 1100px;
+}
+
+.app-topbar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.55rem;
+  margin-bottom: 1rem;
+}
+
+.lang-label {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.lang-btn {
+  border-radius: 999px;
+  font-weight: 600;
+  min-width: 46px;
+}
+
+.app-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.app-card .card-body {
+  padding: 1.2rem 1.25rem;
+}
+
+.app-card-title {
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.token-code {
+  font-size: 0.85rem;
+  color: #093f74;
+  background: #e8f1fb;
+  border: 1px solid #c5d9f0;
+  border-radius: 6px;
+  padding: 0.12rem 0.36rem;
+}
+
+.header-qr {
+  width: 88px;
+  height: 88px;
+  border: 1px solid #c8d7ea;
+  border-radius: 10px;
+  background: #fff;
+  padding: 4px;
+}
+
+.progress {
+  height: 10px;
+  border-radius: 999px;
+  background: #e2ebf5;
+}
+
+.progress-bar {
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--brand-strong), var(--brand));
+}
+
+.form-label {
+  color: #20324a;
+  font-weight: 600;
+}
+
+.form-control,
+.form-select {
+  border-radius: 10px;
+  border-color: #c7d5e6;
+  background: var(--surface-soft);
+}
+
+.form-control:focus,
+.form-select:focus {
+  border-color: #7da8d9;
+  box-shadow: 0 0 0 0.2rem rgba(30, 94, 168, 0.14);
+  background: #fff;
+}
+
+.form-check-input:checked {
+  background-color: var(--brand);
+  border-color: var(--brand);
+}
+
+.unit-chip {
+  display: inline-block;
+  margin-top: 0.35rem;
+  font-size: 0.74rem;
+  color: #1f4f7d;
+  background: #dcecfb;
+  border: 1px solid #bfd8ef;
+  border-radius: 999px;
+  padding: 0.18rem 0.58rem;
+}
+
+.actions-row {
+  display: flex;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+  margin-top: 1.25rem;
+}
+
+.btn {
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+.btn-primary {
+  background-color: var(--brand);
+  border-color: var(--brand);
+}
+
+.btn-primary:hover,
+.btn-primary:focus {
+  background-color: var(--brand-strong);
+  border-color: var(--brand-strong);
+}
+
+.btn-success {
+  background-color: var(--success);
+  border-color: var(--success);
+}
+
+.btn-success:hover,
+.btn-success:focus {
+  background-color: #177651;
+  border-color: #177651;
+}
+
+.app-table th {
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #355275;
+  border-bottom-color: #c7d6e8;
+}
+
+.app-table td {
+  color: #20324a;
+  vertical-align: middle;
+}
+
+.app-table tbody tr:nth-child(odd) {
+  background: #f6faff;
+}
+
+.alert {
+  border-radius: 10px;
+}
+
+.admin-login-card {
+  max-width: 460px;
+}
+
+@media (max-width: 768px) {
+  .app-card .card-body {
+    padding: 1rem;
+  }
+
+  .app-topbar {
+    justify-content: center;
+  }
+
+  .actions-row .btn {
+    width: 100%;
+  }
+
+  .header-qr {
+    width: 74px;
+    height: 74px;
+  }
+}
