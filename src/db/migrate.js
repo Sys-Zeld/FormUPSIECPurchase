@@ -19,6 +19,13 @@ async function migrate() {
       FOREIGN KEY (submission_id) REFERENCES submissions(id) ON DELETE CASCADE
     );
   `);
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS field_settings (
+      field_id TEXT PRIMARY KEY,
+      enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
 }
 
 module.exports = {

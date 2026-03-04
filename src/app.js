@@ -9,7 +9,7 @@ const dayjs = require("dayjs");
 
 const env = require("./config/env");
 const { migrate } = require("./db/migrate");
-const { loadSchema, localizeSections } = require("./utils/schema");
+const { loadSchema, localizeSections, flattenFields } = require("./utils/schema");
 const { sanitizeInput } = require("./utils/sanitize");
 const { validateSection } = require("./utils/validation");
 const { SUPPORTED_LANGS, DEFAULT_LANG, normalizeLang, createTranslator } = require("./i18n");
@@ -22,12 +22,14 @@ const {
   listSubmissionsWithBuyerContact,
   deleteSubmissionById
 } = require("./services/submissions");
+const { getFieldSettingsMap, saveFieldSettings } = require("./services/fieldSettings");
 const { buildSubmissionQrPayload } = require("./services/qr");
 const { generatePdfBuffer } = require("./services/pdf");
 const { sendSubmissionEmail } = require("./services/email");
 
 const app = express();
 const baseSections = loadSchema();
+const allSchemaFieldIds = flattenFields(baseSections).map((field) => field.id);
 app.set("view engine", "ejs");
 app.set("views", path.join(__dirname, "views"));
 
@@ -105,6 +107,32 @@ function sanitizeSectionPayload(section, body) {
     }
   });
   return data;
+}
+
+async function getSectionsForRequest(lang, includeDisabled = false) {
+  const localizedSections = localizeSections(baseSections, lang);
+  const enabledMap = await getFieldSettingsMap(allSchemaFieldIds);
+
+  const markedSections = localizedSections.map((section) => ({
+    ...section,
+    fields: (section.fields || []).map((field) => ({
+      ...field,
+      enabled: enabledMap[field.id] !== false
+    }))
+  }));
+
+  if (includeDisabled) {
+    return { sections: markedSections, enabledMap };
+  }
+
+  const enabledSections = markedSections
+    .map((section) => ({
+      ...section,
+      fields: section.fields.filter((field) => field.enabled)
+    }))
+    .filter((section) => section.fields.length > 0);
+
+  return { sections: enabledSections, enabledMap };
 }
 
 function signAdminSessionPayload(payload) {
@@ -188,6 +216,34 @@ app.get("/admin/tokens", csrfProtection, requireAdminAuth, asyncHandler(async (r
   });
 }));
 
+app.get("/admin/fields", csrfProtection, requireAdminAuth, asyncHandler(async (req, res) => {
+  const { sections } = await getSectionsForRequest(req.lang, true);
+  res.render("admin-fields", {
+    pageTitle: req.t("admin.fieldsTitle"),
+    sections,
+    saved: req.query.saved === "1",
+    csrfToken: req.csrfToken()
+  });
+}));
+
+app.post("/admin/fields", csrfProtection, requireAdminAuth, asyncHandler(async (req, res) => {
+  const selectedRaw = sanitizeInput(req.body.enabled_fields);
+  const selected = Array.isArray(selectedRaw)
+    ? selectedRaw
+    : selectedRaw
+      ? [selectedRaw]
+      : [];
+  const selectedSet = new Set(selected);
+  const payload = {};
+
+  allSchemaFieldIds.forEach((fieldId) => {
+    payload[fieldId] = selectedSet.has(fieldId);
+  });
+
+  await saveFieldSettings(payload);
+  return res.redirect("/admin/fields?saved=1");
+}));
+
 app.post("/admin/tokens/:id/delete", csrfProtection, requireAdminAuth, asyncHandler(async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) {
@@ -198,15 +254,16 @@ app.post("/admin/tokens/:id/delete", csrfProtection, requireAdminAuth, asyncHand
 }));
 
 app.get("/form/start", asyncHandler(async (req, res) => {
-  if (!baseSections.length) {
+  const { sections } = await getSectionsForRequest(req.lang);
+  if (!sections.length) {
     return res.status(500).send(req.t("app.schemaMissing"));
   }
   const { token } = await createSubmission();
-  res.redirect(`/form/${token}/section/${baseSections[0].id}`);
+  res.redirect(`/form/${token}/section/${sections[0].id}`);
 }));
 
 app.get("/form/:token/section/:sectionId", csrfProtection, asyncHandler(async (req, res) => {
-  const sections = localizeSections(baseSections, req.lang);
+  const { sections } = await getSectionsForRequest(req.lang);
   const submission = await resolveSubmissionOr404(req, res);
   if (!submission) return;
   const sectionInfo = resolveSectionOr404(req, res, sections);
@@ -229,7 +286,7 @@ app.get("/form/:token/section/:sectionId", csrfProtection, asyncHandler(async (r
 }));
 
 app.post("/form/:token/section/:sectionId", csrfProtection, asyncHandler(async (req, res) => {
-  const sections = localizeSections(baseSections, req.lang);
+  const { sections } = await getSectionsForRequest(req.lang);
   const submission = await resolveSubmissionOr404(req, res);
   if (!submission) return;
   const sectionInfo = resolveSectionOr404(req, res, sections);
@@ -276,7 +333,7 @@ app.post("/form/:token/section/:sectionId", csrfProtection, asyncHandler(async (
 }));
 
 app.get("/form/:token/review", csrfProtection, asyncHandler(async (req, res) => {
-  const sections = localizeSections(baseSections, req.lang);
+  const { sections } = await getSectionsForRequest(req.lang);
   const submission = await resolveSubmissionOr404(req, res);
   if (!submission) return;
   const answersMap = await getAnswersMap(submission.id);
@@ -300,7 +357,7 @@ const emailLimiter = rateLimit({
 });
 
 app.post("/form/:token/send-email", csrfProtection, emailLimiter, asyncHandler(async (req, res) => {
-  const sections = localizeSections(baseSections, req.lang);
+  const { sections } = await getSectionsForRequest(req.lang);
   const submission = await resolveSubmissionOr404(req, res);
   if (!submission) return;
 
@@ -321,7 +378,7 @@ app.post("/form/:token/send-email", csrfProtection, emailLimiter, asyncHandler(a
 }));
 
 app.get("/form/:token/pdf", asyncHandler(async (req, res) => {
-  const sections = localizeSections(baseSections, req.lang);
+  const { sections } = await getSectionsForRequest(req.lang);
   const submission = await resolveSubmissionOr404(req, res);
   if (!submission) return;
   const answersMap = await getAnswersMap(submission.id);
@@ -332,7 +389,7 @@ app.get("/form/:token/pdf", asyncHandler(async (req, res) => {
 }));
 
 app.get("/form/:token/export.json", asyncHandler(async (req, res) => {
-  const sections = localizeSections(baseSections, req.lang);
+  const { sections } = await getSectionsForRequest(req.lang);
   const submission = await resolveSubmissionOr404(req, res);
   if (!submission) return;
   const answersMap = await getAnswersMap(submission.id);
