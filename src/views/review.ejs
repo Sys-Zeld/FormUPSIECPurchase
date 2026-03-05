@@ -52,6 +52,35 @@
   </div>
 <% }) %>
 
+<div class="card app-card mb-3">
+  <div class="card-body">
+    <h2 class="h6 app-card-title"><%= t("review.documentsTitle") %></h2>
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0 app-table">
+        <thead>
+          <tr>
+            <th>Arquivo</th>
+            <th>Tamanho</th>
+            <th>Acesso</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% if (!documents || !documents.length) { %>
+            <tr><td colspan="3" class="text-muted"><%= t("section.documentsNone") %></td></tr>
+          <% } %>
+          <% (documents || []).forEach((doc) => { %>
+            <tr>
+              <td><%= doc.originalName %></td>
+              <td><%= (doc.sizeBytes / (1024 * 1024)).toFixed(2) %> MB</td>
+              <td><a class="btn btn-sm btn-outline-secondary" href="<%= doc.externalUrl %>" target="_blank" rel="noreferrer"><%= t("section.documentsOpen") %></a></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
 <div class="card app-card">
   <div class="card-body">
     <h2 class="h6 app-card-title"><%= t("review.sendByEmail") %></h2>

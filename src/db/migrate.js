@@ -70,6 +70,19 @@ async function migrate() {
       UNIQUE (equipment_id, field_id)
     );
   `);
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS equipment_documents (
+      id BIGSERIAL PRIMARY KEY,
+      equipment_id BIGINT NOT NULL REFERENCES equipments(id) ON DELETE CASCADE,
+      original_name TEXT NOT NULL,
+      stored_name TEXT NOT NULL,
+      relative_path TEXT NOT NULL,
+      external_url TEXT NOT NULL,
+      mime_type TEXT NOT NULL,
+      size_bytes BIGINT NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
 }
 
 module.exports = {

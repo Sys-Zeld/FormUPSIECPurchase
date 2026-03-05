@@ -10,6 +10,131 @@ const SECTION_ORDER = [
   "5.6 Communication circuits"
 ];
 
+const SECTION_LABELS_PT = {
+  [SECTION_ORDER[0]]: "Geral",
+  [SECTION_ORDER[1]]: "Desempenho, configuracao e topologia",
+  [SECTION_ORDER[2]]: "Condicoes de operacao - Ambiental",
+  [SECTION_ORDER[3]]: "Condicoes de armazenamento e transporte - Ambiental",
+  [SECTION_ORDER[4]]: "5.2 Especificacao de entrada UPS",
+  [SECTION_ORDER[5]]: "5.3 Especificacao de saida UPS",
+  [SECTION_ORDER[6]]: "Bypass (quando aplicavel)",
+  [SECTION_ORDER[7]]: "5.4.2 Dispositivo de armazenamento de energia - Bateria",
+  [SECTION_ORDER[8]]: "5.6 Circuitos de comunicacao"
+};
+
+const FIELD_LABELS_PT = {
+  general_model: "Modelo",
+  general_rated_output_apparent_power: "Potencia aparente nominal de saida",
+  general_rated_output_active_power: "Potencia ativa nominal de saida",
+  perf_classification: "Classificacao de desempenho",
+  perf_multiple_normal_mode: "UPS em modo normal multiplo",
+  perf_input_dependency_characteristics: "Se sim, conjunto aplicavel de caracteristicas de dependencia de entrada",
+  perf_configuration: "Configuracao",
+  perf_topology: "Topologia",
+  env_oper_dimensions_uninstalled: "Dimensoes sem instalacao (altura x largura x profundidade)",
+  env_oper_mass_in_use: "Massa em uso/instalada (com dispositivo de armazenamento de energia se integrado)",
+  env_oper_pollution_degree: "Grau de poluicao",
+  env_oper_ambient_temperature_range: "Faixa de temperatura ambiente em operacao",
+  env_oper_relative_humidity_range: "Umidade relativa, faixa ambiente em operacao (sem condensacao)",
+  env_oper_altitude_without_derating: "Altitude maxima de operacao (sem desclassificacao de potencia de saida)",
+  env_oper_altitude_with_derating: "Altitude maxima de operacao (com desclassificacao de potencia de saida)",
+  env_oper_other_unusual_operating_conditions: "Outras condicoes de operacao incomuns",
+  env_oper_acoustic_noise_normal_mode: "Ruido acustico: pressao sonora A (LpA a 1 m) - em modo normal",
+  env_oper_acoustic_noise_stored_energy_mode: "Ruido acustico: pressao sonora A (LpA a 1 m) - em modo de energia armazenada",
+  env_storage_ambient_temperature_range: "Faixa de temperatura ambiente",
+  env_storage_relative_humidity_range: "Umidade relativa, faixa ambiente (sem condensacao)",
+  env_storage_altitude_max_permitted: "Altitude maxima permitida",
+  env_storage_min_ambient_air_pressure: "Pressao do ar ambiente minima permitida",
+  env_storage_energy_storage_specific_conditions: "Dispositivo de armazenamento de energia, condicoes especificas de armazenamento ou transporte",
+  env_storage_other_unusual_conditions: "Outras condicoes incomuns de armazenamento e transporte",
+  input_number_of_phases: "Numero de fases",
+  input_neutral_requirements: "Requisitos de neutro",
+  input_rated_input_current: "Corrente nominal de entrada",
+  input_input_power_factor: "Fator de potencia de entrada",
+  input_inrush_current: "Corrente de partida",
+  input_maximum_input_current: "Corrente maxima de entrada",
+  input_current_overload_capacity: "Corrente de entrada na capacidade de sobrecarga (quando aplicavel, curva de corrente versus tempo)",
+  input_thdi: "Distorcao harmonica total de corrente",
+  input_min_short_circuit_power_ssc: "Capacidade minima de potencia de curto-circuito (Ssc) requerida da alimentacao CA de entrada",
+  input_earth_leakage_current: "Corrente de fuga a terra",
+  input_ac_distribution_compatibility: "Compatibilidade com sistema de distribuicao de energia CA",
+  input_rated_input_voltage: "Tensao nominal de entrada",
+  input_voltage_tolerance_band: "Faixa de tolerancia de tensao de entrada (+%, -%)",
+  input_rated_input_frequency: "Frequencia nominal de entrada",
+  input_frequency_tolerance_band: "Faixa de tolerancia de frequencia de entrada (+%, -%)",
+  input_compat_unusual_input_harmonic_voltage_distortion: "Compatibilidade do UPS com distorcao harmonica incomum de tensao na entrada",
+  input_compat_specific_input_protection_devices: "Compatibilidade do UPS com dispositivos especificos de protecao da alimentacao de entrada",
+  input_compat_all_pole_isolation: "Compatibilidade do UPS com isolamento de todos os polos da alimentacao CA de entrada",
+  input_compat_standby_generator: "Compatibilidade do UPS com gerador de contingencia especifico",
+  output_rated_output_voltage: "Tensao nominal de saida",
+  output_rms_voltage_tolerance_band: "Faixa de tolerancia da tensao RMS de saida (+%, -%)",
+  output_rated_output_current: "Corrente nominal de saida",
+  output_min_inverter_current_limit: "Limite minimo de corrente do inversor (ik1, ik2, ik3 conforme aplicavel) (% da corrente nominal/real e tempo de sustentacao)",
+  output_rated_frequency: "Frequencia nominal",
+  output_free_running_freq_tolerance_band: "Faixa de tolerancia da frequencia de saida em regime livre (nao sincronizada) (+%, -%)",
+  output_sync_freq_tolerance_band: "Faixa de tolerancia da frequencia de saida aceita para sincronizacao com fonte externa (min a max)",
+  output_max_phase_angle_sync: "Angulo maximo de fase entre as formas de onda de tensao do inversor e da fonte externa",
+  output_rate_of_change_frequency: "Taxa de variacao da frequencia (slew-rate) durante sincronizacao",
+  output_number_of_phases_available: "Numero de fases disponiveis",
+  output_neutral_availability: "Disponibilidade de neutro",
+  output_ac_distribution_compatibility: "Compatibilidade com sistema de distribuicao de energia CA",
+  output_thdv_normal_mode: "Distorcao harmonica total de tensao - modo normal",
+  output_thdv_stored_energy_mode: "Distorcao harmonica total de tensao - modo de energia armazenada",
+  output_dynamic_output_performance_step_load: "Desempenho dinamico de saida apos aplicacao de carga em degrau",
+  output_overload_capacity_normal_mode: "Capacidade de sobrecarga - modo normal",
+  output_overload_capacity_stored_energy_mode: "Capacidade de sobrecarga - modo de energia armazenada",
+  output_overload_capacity_bypass_mode: "Capacidade de sobrecarga - modo bypass (ver secao Bypass)",
+  output_overload_rms_tolerance_affected: "Faixa de tolerancia da tensao RMS de saida afetada (durante sobrecarga)?",
+  output_overload_new_rms_tolerance_band: "Se sim, nova faixa de tolerancia da tensao RMS de saida (+%, -%)",
+  output_fault_clearing_capacity_normal_mode: "Capacidade de eliminacao de falha (max. dispositivo de protecao) - modo normal",
+  output_fault_clearing_capacity_stored_energy_mode: "Capacidade de eliminacao de falha (max. dispositivo de protecao) - modo de energia armazenada",
+  output_load_power_factor_rated_load: "Fator de potencia da carga na carga nominal",
+  output_pf_displacement_tolerance_band: "Faixa de tolerancia permissivel do fator de potencia por deslocamento da carga",
+  output_voltage_unbalance_100: "Desequilibrio de tensao resultante de 100 % de razao de desequilibrio de carga (UPS polifasico apenas)",
+  output_efficiency_100: "Eficiencia do UPS em modo normal - Eff100%",
+  output_efficiency_75: "Eficiencia do UPS em modo normal - Eff75%",
+  output_efficiency_50: "Eficiencia do UPS em modo normal - Eff50%",
+  output_efficiency_25: "Eficiencia do UPS em modo normal - Eff25%",
+  output_efficiency_no_load_mode: "Eficiencia do UPS - EffN (modo sem carga)",
+  output_no_load_losses: "Perdas em vazio",
+  output_parallel_redundant_failure_high_impedance: "Falha em UPS redundante em paralelo - falha de alta impedancia",
+  output_parallel_redundant_failure_low_impedance: "Falha em UPS redundante em paralelo - falha de baixa impedancia",
+  output_parallel_system_rated_active_power: "Potencia ativa nominal de saida para sistema com dois UPS em paralelo (quando aplicavel)",
+  output_parallel_system_rated_apparent_power: "Potencia aparente nominal de saida para sistema com dois UPS em paralelo (quando aplicavel)",
+  bypass_maintenance_bypass_switch: "Chave de bypass de manutencao",
+  bypass_automatic_bypass_switch: "Chave de bypass automatica",
+  bypass_transfer_time: "Tempo de transferencia da chave de bypass",
+  bypass_number_of_phases: "Numero de fases",
+  bypass_neutral_requirements: "Requisitos de neutro",
+  bypass_rated_current: "Corrente nominal",
+  bypass_overload_capacity: "Capacidade de sobrecarga (% da corrente nominal e duracao)",
+  bypass_protective_device_rating: "Classificacao do dispositivo de protecao do bypass",
+  bypass_earth_leakage_current: "Corrente de fuga a terra",
+  bypass_power_factor: "Fator de potencia",
+  bypass_min_short_circuit_power_ssc: "Capacidade minima de potencia de curto-circuito (Ssc) requerida da alimentacao CA de entrada",
+  bypass_ac_distribution_compatibility: "Compatibilidade com sistema de distribuicao de energia CA",
+  bypass_rated_voltage: "Tensao nominal",
+  bypass_voltage_tolerance_band: "Faixa de tolerancia de tensao (+%, -%)",
+  bypass_rated_frequency: "Frequencia nominal",
+  bypass_frequency_tolerance_band: "Faixa de tolerancia de frequencia (+%, -%)",
+  bypass_isolation_transformer: "Transformador de isolamento do bypass",
+  bypass_inrush_current_if_transformer_inductor: "Corrente de partida (se transformador ou indutor for fornecido)",
+  bat_service_life: "Vida util",
+  bat_quantity_blocks_cells_and_strings: "Quantidade de blocos ou celulas e de strings paralelas quando houver mais de uma",
+  bat_nominal_string_voltage: "Tensao nominal da string",
+  bat_technology: "Tecnologia da bateria",
+  bat_nominal_capacity_and_rate: "Capacidade nominal da bateria total e taxa de descarga de referencia (taxa Cx)",
+  bat_stored_energy_time_backup: "Tempo de energia armazenada (tempo de autonomia na carga de teste de referencia)",
+  bat_restored_energy_time_recharge_90: "Tempo de energia restaurada (tempo de recarga para 90 % da capacidade)",
+  bat_ambient_temperature_rated: "Temperatura ambiente na qual o desempenho da bateria e classificado",
+  bat_dc_port_earth_condition: "Condicao de aterramento da porta CC (apenas bateria remota)",
+  bat_dc_port_isolation: "Isolamento da porta CC da entrada e/ou saida (apenas bateria remota)",
+  bat_ripple_current_normal_mode: "Corrente de ripple da bateria durante operacao em modo normal (se exceder 5 % da capacidade em Ah)",
+  bat_additional_characteristics_supplier: "Caracteristicas adicionais fornecidas pelo fabricante da bateria para bateria remota",
+  bat_additional_or_unusual_conditions: "Condicoes adicionais ou incomuns",
+  comm_ports_available: "Portas de sinal, controle e comunicacao disponiveis"
+};
+
 const FIELDS_SEED = [
   { key: "general_model", label: "Model", section: "General", fieldType: "text", unit: "Manufacturer designation" },
   { key: "general_rated_output_apparent_power", label: "Rated output apparent power", section: "General", fieldType: "number", unit: "VA" },
@@ -161,7 +286,23 @@ const FIELDS_SEED = [
   { key: "comm_ports_available", label: "Signal, control and communication ports available", section: "5.6 Communication circuits", fieldType: "text" }
 ];
 
+function getSectionLabel(section, lang = "en") {
+  if (lang === "pt") {
+    return SECTION_LABELS_PT[section] || section;
+  }
+  return section;
+}
+
+function getFieldLabel(key, fallbackLabel, lang = "en") {
+  if (lang === "pt") {
+    return FIELD_LABELS_PT[key] || fallbackLabel;
+  }
+  return fallbackLabel;
+}
+
 module.exports = {
   SECTION_ORDER,
-  FIELDS_SEED
+  FIELDS_SEED,
+  getSectionLabel,
+  getFieldLabel
 };

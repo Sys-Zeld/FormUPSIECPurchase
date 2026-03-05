@@ -33,6 +33,7 @@ Aplicacao: `http://localhost:3000`
 - `field_profiles` + `field_profile_fields`: perfis reutilizaveis com conjuntos de campos
 - `equipment_enabled_fields`: campos habilitados por equipamento/token
 - `equipment_field_values`: valores por equipamento e campo
+- `equipment_documents`: anexos PDF por equipamento/token
 
 ## Fluxo de cliente com perfil
 
@@ -42,6 +43,14 @@ Aplicacao: `http://localhost:3000`
 4. Ajuste manualmente os checkboxes se necessario.
 5. Opcionalmente informe um nome em "Salvar selecao atual como novo perfil".
 6. Gere o token; o formulario desse cliente exibira somente os campos habilitados.
+
+## Anexos PDF
+
+- No final do formulario de especificacao, e possivel anexar PDFs (ex.: desenho unifilar e trifilar).
+- Limite: ate 10 documentos por token, com ate 10MB por arquivo.
+- Apenas PDF e aceito.
+- Os arquivos sao salvos em `dados/docs` (na raiz da aplicacao).
+- O sistema salva no banco o link externo do arquivo, baseado em `APP_BASE_URL`.
 
 ## Temas visuais do formulario
 

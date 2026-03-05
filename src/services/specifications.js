@@ -47,8 +47,8 @@ function resolveEffectiveValue(field, savedValueMap) {
   return { value: null, source: "empty" };
 }
 
-async function getEquipmentSpecification(equipmentId, section = null) {
-  const fields = await listFields(section ? { section } : {});
+async function getEquipmentSpecification(equipmentId, section = null, lang = "en") {
+  const fields = await listFields(section ? { section, lang } : { lang });
   const enabledFieldIds = await getEnabledFieldIdsForEquipment(equipmentId);
   const effectiveFields = enabledFieldIds.length
     ? fields.filter((field) => enabledFieldIds.includes(field.id))

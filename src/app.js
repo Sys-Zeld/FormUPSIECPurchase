@@ -37,6 +37,14 @@ const {
 } = require("./services/equipments");
 const { getEquipmentSpecification, saveEquipmentSpecification } = require("./services/specifications");
 const { listProfiles, getProfileById, getProfileFieldIds, createProfile } = require("./services/profiles");
+const {
+  DOCS_DIR,
+  MAX_DOCS_PER_EQUIPMENT,
+  MAX_DOC_SIZE_BYTES,
+  ensureDocsDirectory,
+  listEquipmentDocuments,
+  saveEquipmentDocument
+} = require("./services/documents");
 
 const app = express();
 app.set("view engine", "ejs");
@@ -47,6 +55,8 @@ app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
 app.use(cookieParser());
 app.use("/public", express.static(path.join(__dirname, "public")));
+ensureDocsDirectory();
+app.use("/dados/docs", express.static(DOCS_DIR));
 
 const supportedLangSet = new Set(SUPPORTED_LANGS);
 const csrfProtection = csrf({ cookie: true });
@@ -152,7 +162,7 @@ function parseSelectedFieldIds(input) {
 }
 
 async function renderAdminFieldsPage(req, res, options = {}) {
-  const groupedMap = await listSectionsWithFields();
+  const groupedMap = await listSectionsWithFields({ lang: req.lang });
   const presentSections = Object.keys(groupedMap).filter((section) => !SECTION_ORDER.includes(section));
   const sectionNames = [...SECTION_ORDER, ...presentSections];
   const sections = sectionNames
@@ -183,7 +193,7 @@ async function renderAdminFieldsPage(req, res, options = {}) {
 }
 
 async function renderAdminNewClientPage(req, res, options = {}) {
-  const groupedMap = await listSectionsWithFields();
+  const groupedMap = await listSectionsWithFields({ lang: req.lang });
   const presentSections = Object.keys(groupedMap).filter((section) => !SECTION_ORDER.includes(section));
   const sectionNames = [...SECTION_ORDER, ...presentSections];
   const sections = sectionNames
@@ -498,7 +508,7 @@ app.get("/equipment/:id/specification", asyncHandler(async (req, res) => {
   const equipment = await getEquipmentById(id);
   if (!equipment) return res.status(404).json({ error: "Equipment not found." });
   const section = sanitizeInput(req.query.section);
-  const data = await getEquipmentSpecification(id, section || null);
+  const data = await getEquipmentSpecification(id, section || null, req.lang);
   res.json({ data });
 }));
 
@@ -517,12 +527,16 @@ app.put("/equipment/:id/specification", requireAdminAuth, asyncHandler(async (re
 app.get("/form/:token/specification", csrfProtection, asyncHandler(async (req, res) => {
   const equipment = await resolveEquipmentByTokenOr404(req, res);
   if (!equipment) return;
-  const specification = await getEquipmentSpecification(equipment.id);
+  const specification = await getEquipmentSpecification(equipment.id, null, req.lang);
+  const documents = await listEquipmentDocuments(equipment.id);
   const qr = await buildSubmissionQrPayload(equipment.token, []);
   res.render("section", {
     pageTitle: req.t("section.headerTitle"),
     equipment,
     sections: buildSpecificationRenderModel(specification),
+    documents,
+    docsMaxCount: MAX_DOCS_PER_EQUIPMENT,
+    docsMaxSizeBytes: MAX_DOC_SIZE_BYTES,
     errors: {},
     saved: req.query.saved === "1",
     qrDataUrl: qr.qrDataUrl,
@@ -534,15 +548,19 @@ app.post("/form/:token/specification", csrfProtection, asyncHandler(async (req, 
   const equipment = await resolveEquipmentByTokenOr404(req, res);
   if (!equipment) return;
 
-  const specification = await getEquipmentSpecification(equipment.id);
+  const specification = await getEquipmentSpecification(equipment.id, null, req.lang);
   const allFields = specification.sections.flatMap((section) => section.fields);
   const parsed = parseSpecificationFormBody(allFields, req.body);
   if (Object.keys(parsed.errors).length > 0) {
+    const documents = await listEquipmentDocuments(equipment.id);
     const qr = await buildSubmissionQrPayload(equipment.token, []);
     return res.status(422).render("section", {
       pageTitle: req.t("section.headerTitle"),
       equipment,
       sections: buildSpecificationRenderModel(specification, parsed.submittedValues),
+      documents,
+      docsMaxCount: MAX_DOCS_PER_EQUIPMENT,
+      docsMaxSizeBytes: MAX_DOC_SIZE_BYTES,
       errors: parsed.errors,
       saved: false,
       qrDataUrl: qr.qrDataUrl,
@@ -557,15 +575,55 @@ app.post("/form/:token/specification", csrfProtection, asyncHandler(async (req, 
   return res.redirect(`/form/${equipment.token}/specification?saved=1`);
 }));
 
+app.post(
+  "/form/:token/docs/upload",
+  express.raw({ type: "application/pdf", limit: `${Math.ceil(MAX_DOC_SIZE_BYTES / (1024 * 1024))}mb` }),
+  csrfProtection,
+  asyncHandler(async (req, res) => {
+    const equipment = await resolveEquipmentByTokenOr404(req, res);
+    if (!equipment) return;
+
+    let decodedFileName = "documento.pdf";
+    try {
+      decodedFileName = decodeURIComponent(req.headers["x-file-name"] || "documento.pdf");
+    } catch (_err) {
+      decodedFileName = "documento.pdf";
+    }
+    const fileName = sanitizeInput(decodedFileName);
+    const mimeType = sanitizeInput(req.headers["content-type"] || "application/pdf");
+    const sizeBytes = Number(req.headers["content-length"] || (Buffer.isBuffer(req.body) ? req.body.length : 0));
+
+    const created = await saveEquipmentDocument({
+      equipmentId: equipment.id,
+      token: equipment.token,
+      originalName: fileName || "documento.pdf",
+      mimeType,
+      sizeBytes,
+      buffer: req.body
+    });
+
+    res.status(201).json({
+      data: {
+        id: created.id,
+        originalName: created.originalName,
+        externalUrl: created.externalUrl,
+        sizeBytes: created.sizeBytes
+      }
+    });
+  })
+);
+
 app.get("/form/:token/review", csrfProtection, asyncHandler(async (req, res) => {
   const equipment = await resolveEquipmentByTokenOr404(req, res);
   if (!equipment) return;
-  const specification = await getEquipmentSpecification(equipment.id);
+  const specification = await getEquipmentSpecification(equipment.id, null, req.lang);
+  const documents = await listEquipmentDocuments(equipment.id);
   const qr = await buildSubmissionQrPayload(equipment.token, []);
   res.render("review", {
     pageTitle: req.t("app.reviewTitle"),
     equipment,
     sections: buildSpecificationRenderModel(specification),
+    documents,
     emailSent: req.query.email === "1",
     qrDataUrl: qr.qrDataUrl,
     csrfToken: req.csrfToken()
@@ -587,7 +645,7 @@ app.post("/form/:token/send-email", csrfProtection, emailLimiter, asyncHandler(a
     return res.status(400).send(req.t("app.invalidRecipientEmail"));
   }
 
-  const specification = await getEquipmentSpecification(equipment.id);
+  const specification = await getEquipmentSpecification(equipment.id, null, req.lang);
   const sections = buildSpecificationRenderModel(specification);
   try {
     const pdfBuffer = await generatePdfBuffer({ submission: equipment, sections, lang: req.lang });
@@ -602,7 +660,7 @@ app.post("/form/:token/send-email", csrfProtection, emailLimiter, asyncHandler(a
 app.get("/form/:token/pdf", asyncHandler(async (req, res) => {
   const equipment = await resolveEquipmentByTokenOr404(req, res);
   if (!equipment) return;
-  const specification = await getEquipmentSpecification(equipment.id);
+  const specification = await getEquipmentSpecification(equipment.id, null, req.lang);
   const sections = buildSpecificationRenderModel(specification);
   const pdfBuffer = await generatePdfBuffer({ submission: equipment, sections, lang: req.lang });
   res.setHeader("Content-Type", "application/pdf");
@@ -613,7 +671,7 @@ app.get("/form/:token/pdf", asyncHandler(async (req, res) => {
 app.get("/form/:token/export.json", asyncHandler(async (req, res) => {
   const equipment = await resolveEquipmentByTokenOr404(req, res);
   if (!equipment) return;
-  const specification = await getEquipmentSpecification(equipment.id);
+  const specification = await getEquipmentSpecification(equipment.id, null, req.lang);
   const sections = buildSpecificationRenderModel(specification);
   const payload = {
     meta: {
@@ -652,7 +710,7 @@ app.use((err, req, res, next) => {
   if (err.code === "EBADCSRFTOKEN") {
     return res.status(403).send(req.t("app.csrfExpired"));
   }
-  if (err.statusCode && req.path.startsWith("/fields")) {
+  if (err.statusCode && (req.path.startsWith("/fields") || req.path.includes("/docs/upload"))) {
     return res.status(err.statusCode).json({ error: err.message, details: err.details || null });
   }
   return next(err);

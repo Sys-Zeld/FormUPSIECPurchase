@@ -54,6 +54,41 @@
         <% }) %>
       </div>
 
+      <div class="card app-card mt-3">
+        <div class="card-body">
+          <h2 class="h6 app-card-title mb-2"><%= t("section.documentsTitle") %></h2>
+          <p class="text-muted mb-3"><%= t("section.documentsHint", { count: docsMaxCount, sizeMb: Math.floor(docsMaxSizeBytes / (1024 * 1024)) }) %></p>
+          <div id="docsFeedback" class="small mb-2"></div>
+          <div class="d-flex gap-2 flex-wrap mb-3">
+            <input id="docsInput" type="file" class="form-control" accept="application/pdf,.pdf" multiple />
+            <button id="docsUploadBtn" class="btn btn-outline-primary" type="button"><%= t("section.documentsUploadButton") %></button>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0 app-table">
+              <thead>
+                <tr>
+                  <th>Arquivo</th>
+                  <th>Tamanho</th>
+                  <th>Acesso</th>
+                </tr>
+              </thead>
+              <tbody>
+                <% if (!documents || !documents.length) { %>
+                  <tr><td colspan="3" class="text-muted"><%= t("section.documentsNone") %></td></tr>
+                <% } %>
+                <% (documents || []).forEach((doc) => { %>
+                  <tr>
+                    <td><%= doc.originalName %></td>
+                    <td><%= (doc.sizeBytes / (1024 * 1024)).toFixed(2) %> MB</td>
+                    <td><a class="btn btn-sm btn-outline-secondary" href="<%= doc.externalUrl %>" target="_blank" rel="noreferrer"><%= t("section.documentsOpen") %></a></td>
+                  </tr>
+                <% }) %>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
       <div class="form-actions-sticky">
         <a class="btn btn-outline-secondary" href="/form/<%= equipment.token %>/review"><%= t("section.cancel") %></a>
         <button class="btn btn-primary" type="submit" name="action" value="draft"><%= t("section.saveSpecifications") %></button>
@@ -61,5 +96,77 @@
     </form>
   </div>
 </div>
+
+<script>
+  (function () {
+    const uploadBtn = document.getElementById("docsUploadBtn");
+    const input = document.getElementById("docsInput");
+    const feedback = document.getElementById("docsFeedback");
+    if (!uploadBtn || !input || !feedback) return;
+
+    const maxCount = <%= docsMaxCount %>;
+    const existingCount = <%= (documents || []).length %>;
+    const maxSize = <%= docsMaxSizeBytes %>;
+    const csrfToken = "<%= csrfToken %>";
+    const uploadUrl = "/form/<%= equipment.token %>/docs/upload";
+    const msgs = {
+      invalidType: "<%= t('section.documentsInvalidType') %>",
+      maxCount: "<%= t('section.documentsMaxCount') %>",
+      maxSize: "<%= t('section.documentsMaxSize', { sizeMb: Math.floor(docsMaxSizeBytes / (1024 * 1024)) }) %>",
+      uploading: "<%= t('section.documentsUploading') %>",
+      success: "<%= t('section.documentsSent') %>",
+      error: "<%= t('section.documentsUploadError') %>"
+    };
+
+    function setMessage(message, isError) {
+      feedback.textContent = message;
+      feedback.className = isError ? "small text-danger mb-2" : "small text-success mb-2";
+    }
+
+    uploadBtn.addEventListener("click", async function () {
+      const files = Array.from(input.files || []);
+      if (!files.length) return;
+      if (existingCount + files.length > maxCount) {
+        setMessage(msgs.maxCount, true);
+        return;
+      }
+      for (const file of files) {
+        if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
+          setMessage(msgs.invalidType, true);
+          return;
+        }
+        if (file.size > maxSize) {
+          setMessage(msgs.maxSize, true);
+          return;
+        }
+      }
+
+      try {
+        uploadBtn.disabled = true;
+        setMessage(msgs.uploading, false);
+        for (const file of files) {
+          const buffer = await file.arrayBuffer();
+          const response = await fetch(uploadUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/pdf",
+              "X-File-Name": encodeURIComponent(file.name),
+              "X-CSRF-Token": csrfToken
+            },
+            body: buffer
+          });
+          if (!response.ok) {
+            throw new Error("upload failed");
+          }
+        }
+        setMessage(msgs.success, false);
+        window.location.reload();
+      } catch (_err) {
+        uploadBtn.disabled = false;
+        setMessage(msgs.error, true);
+      }
+    });
+  })();
+</script>
 
 <%- include("partials/footer") %>

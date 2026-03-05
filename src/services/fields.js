@@ -1,5 +1,5 @@
 const db = require("../db");
-const { SECTION_ORDER } = require("../schema/annexD.fields.seed");
+const { SECTION_ORDER, getSectionLabel, getFieldLabel } = require("../schema/annexD.fields.seed");
 
 const FIELD_TYPES = new Set(["text", "number", "enum", "boolean", "time", "dimension"]);
 
@@ -46,12 +46,13 @@ function parseDefaultValueInput(value) {
   return value;
 }
 
-function normalizeFieldRow(row) {
+function normalizeFieldRow(row, lang = "en") {
   return {
     id: Number(row.id),
     key: row.key,
-    label: row.label,
-    section: row.section,
+    label: getFieldLabel(row.key, row.label, lang),
+    section: getSectionLabel(row.section, lang),
+    sectionKey: row.section,
     fieldType: row.field_type,
     unit: row.unit || null,
     enumOptions: row.enum_options || null,
@@ -208,6 +209,7 @@ function validateFieldPayload(payload, options = {}) {
 }
 
 async function listFields(filters = {}) {
+  const lang = String(filters.lang || "en").toLowerCase().startsWith("pt") ? "pt" : "en";
   const where = [];
   const values = [];
   if (filters.section) {
@@ -224,7 +226,7 @@ async function listFields(filters = {}) {
       id ASC
   `;
   const result = await db.query(sql, values);
-  return result.rows.map(normalizeFieldRow);
+  return result.rows.map((row) => normalizeFieldRow(row, lang));
 }
 
 async function getFieldById(id) {
@@ -332,8 +334,8 @@ async function deleteField(id) {
   return result.rowCount > 0;
 }
 
-async function listSectionsWithFields() {
-  const fields = await listFields();
+async function listSectionsWithFields(filters = {}) {
+  const fields = await listFields(filters);
   return fields.reduce((acc, field) => {
     if (!acc[field.section]) {
       acc[field.section] = [];
