@@ -4,14 +4,14 @@
   <div class="card-body d-flex justify-content-between align-items-start flex-wrap gap-3">
     <div>
       <h1 class="h4 app-card-title mb-1"><%= t("review.headerTitle") %></h1>
-      <p class="text-muted mb-0">Token: <code class="token-code"><%= submission.token %></code></p>
+      <p class="text-muted mb-0">Token: <code class="token-code"><%= equipment.token %></code></p>
     </div>
     <div class="d-flex flex-column align-items-end gap-2">
       <img class="header-qr" src="<%= qrDataUrl %>" alt="QR do link da submissao" />
-      <div class="d-flex gap-2">
-        <a class="btn btn-outline-secondary btn-sm" href="/form/<%= submission.token %>/section/<%= sections[0].id %>"><%= t("review.backToForm") %></a>
-        <a class="btn btn-outline-primary btn-sm" href="/form/<%= submission.token %>/export.json"><%= t("review.exportJson") %></a>
-        <a class="btn btn-primary btn-sm" href="/form/<%= submission.token %>/pdf"><%= t("review.downloadPdf") %></a>
+      <div class="d-flex gap-2 flex-wrap justify-content-end">
+        <a class="btn btn-outline-secondary btn-sm" href="/form/<%= equipment.token %>/specification"><%= t("review.backToForm") %></a>
+        <a class="btn btn-outline-primary btn-sm" href="/form/<%= equipment.token %>/export.json"><%= t("review.exportJson") %></a>
+        <a class="btn btn-primary btn-sm" href="/form/<%= equipment.token %>/pdf"><%= t("review.downloadPdf") %></a>
       </div>
     </div>
   </div>
@@ -24,7 +24,7 @@
 <% sections.forEach((section) => { %>
   <div class="card app-card mb-3">
     <div class="card-body">
-      <h2 class="h6 app-card-title"><%= section.title %></h2>
+      <h2 class="h6 app-card-title"><%= section.section %></h2>
       <div class="table-responsive">
         <table class="table table-sm align-middle mb-0 app-table">
           <thead>
@@ -38,7 +38,10 @@
             <% section.fields.forEach((field) => { %>
               <tr>
                 <td><%= field.label %></td>
-                <td><%= answersMap[field.id] || "-" %></td>
+                <td>
+                  <%= (field.displayValue !== "" && field.displayValue !== null && field.displayValue !== undefined) ? field.displayValue : "-" %>
+                  <% if (field.cameFromDefault) { %><span class="app-default-badge ms-1"><%= t("field.defaultBadge") %></span><% } %>
+                </td>
                 <td><%= field.unit || "-" %></td>
               </tr>
             <% }) %>
@@ -52,7 +55,7 @@
 <div class="card app-card">
   <div class="card-body">
     <h2 class="h6 app-card-title"><%= t("review.sendByEmail") %></h2>
-    <form method="post" action="/form/<%= submission.token %>/send-email" class="row g-3">
+    <form method="post" action="/form/<%= equipment.token %>/send-email" class="row g-3">
       <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
       <div class="col-md-8">
         <label for="to" class="form-label"><%= t("review.recipient") %></label>

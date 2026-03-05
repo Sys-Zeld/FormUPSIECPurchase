@@ -3,11 +3,7 @@ const env = require("../config/env");
 
 function buildSubmissionAccessLink(submissionToken, sections = []) {
   const cleanBaseUrl = String(env.appBaseUrl || "http://localhost:3000").replace(/\/+$/, "");
-  const firstSectionId = sections[0] && sections[0].id ? sections[0].id : null;
-  if (firstSectionId) {
-    return `${cleanBaseUrl}/form/${submissionToken}/section/${firstSectionId}`;
-  }
-  return `${cleanBaseUrl}/form/${submissionToken}/review`;
+  return `${cleanBaseUrl}/form/${submissionToken}/specification`;
 }
 
 async function buildSubmissionQrPayload(submissionToken, sections = []) {

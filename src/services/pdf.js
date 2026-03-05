@@ -113,14 +113,16 @@ function drawTableHeader(doc, { x, widths, labels }) {
 
 function resolveSubmissionLink(submission, sections) {
   const cleanBaseUrl = String(env.appBaseUrl || "http://localhost:3000").replace(/\/+$/, "");
-  const firstSectionId = sections && sections[0] && sections[0].id ? sections[0].id : null;
-  if (firstSectionId) {
-    return `${cleanBaseUrl}/form/${submission.token}/section/${firstSectionId}`;
-  }
-  return `${cleanBaseUrl}/form/${submission.token}/review`;
+  return `${cleanBaseUrl}/form/${submission.token}/specification`;
 }
 
-async function generatePdfBuffer({ submission, sections, answersMap, lang }) {
+function resolveFieldDisplayValue(field) {
+  if (field.displayValue !== undefined && field.displayValue !== null && field.displayValue !== "") return field.displayValue;
+  if (field.effectiveValue !== undefined && field.effectiveValue !== null && field.effectiveValue !== "") return field.effectiveValue;
+  return "-";
+}
+
+async function generatePdfBuffer({ submission, sections, lang }) {
   const t = createTranslator(lang);
   const tableLabels =
     lang === "en" ? ["CHARACTERISTIC", "UNIT", "DEFAULT"] : ["CARACTERISTICA", "UNIDADE", "DEFAULT"];
@@ -169,9 +171,11 @@ async function generatePdfBuffer({ submission, sections, answersMap, lang }) {
       link: submissionLink,
       underline: true
     });
-    doc.fillColor("#000000").text(t("pdf.status", { status: submission.status }), { width: textWidth });
-    doc.text(t("pdf.createdAt", { value: submission.created_at }), { width: textWidth });
-    doc.text(t("pdf.updatedAt", { value: submission.updated_at }), { width: textWidth });
+    const createdAt = submission.created_at || submission.createdAt || "-";
+    const updatedAt = submission.updated_at || submission.updatedAt || "-";
+    doc.fillColor("#000000").text(t("pdf.status", { status: submission.status || "-" }), { width: textWidth });
+    doc.text(t("pdf.createdAt", { value: createdAt }), { width: textWidth });
+    doc.text(t("pdf.updatedAt", { value: updatedAt }), { width: textWidth });
 
     const minHeaderBottom = qrY + qrSize + 18;
     if (doc.y < minHeaderBottom) {
@@ -183,18 +187,18 @@ async function generatePdfBuffer({ submission, sections, answersMap, lang }) {
       const sectionHeaderHeight = 20;
       const tableHeaderHeight = 22;
       ensureSpace(doc, sectionHeaderHeight + tableHeaderHeight + 8);
-      drawSectionTitle(doc, { x: startX, width: contentWidth, text: section.title });
+      drawSectionTitle(doc, { x: startX, width: contentWidth, text: section.section || section.title });
       drawTableHeader(doc, { x: startX, widths: colWidths, labels: tableLabels });
 
       (section.fields || []).forEach((field) => {
-        const value = answersMap[field.id] || "-";
+        const value = resolveFieldDisplayValue(field);
         const unit = field.unit || "-";
         const cells = [field.label, unit, value];
         const rowHeight = rowHeightForCells(doc, colWidths, cells);
 
         if (doc.y + rowHeight > doc.page.height - doc.page.margins.bottom) {
           doc.addPage();
-          drawSectionTitle(doc, { x: startX, width: contentWidth, text: section.title });
+          drawSectionTitle(doc, { x: startX, width: contentWidth, text: section.section || section.title });
           drawTableHeader(doc, { x: startX, widths: colWidths, labels: tableLabels });
         }
 

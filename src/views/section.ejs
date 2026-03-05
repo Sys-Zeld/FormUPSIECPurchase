@@ -1,61 +1,62 @@
 <%- include("partials/head", { pageTitle }) %>
 
-<div class="card app-card mb-4">
+<div class="card app-card app-form-header mb-4">
   <div class="card-body">
     <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
       <div>
         <h1 class="h4 app-card-title mb-1"><%= t("section.headerTitle") %></h1>
-        <p class="text-muted mb-0">Token: <code class="token-code"><%= submission.token %></code></p>
+        <p class="text-muted mb-0">Token: <code class="token-code"><%= equipment.token %></code></p>
       </div>
       <div class="d-flex flex-column align-items-end gap-2">
         <img class="header-qr" src="<%= qrDataUrl %>" alt="QR do link da submissao" />
-        <a class="btn btn-outline-secondary btn-sm" href="/form/<%= submission.token %>/review"><%= t("section.goToReview") %></a>
+        <div class="d-flex gap-2 flex-wrap justify-content-end">
+          <button class="btn btn-outline-primary btn-sm" type="submit" form="specificationForm" name="action" value="draft">
+            <%= t("section.saveSpecifications") %>
+          </button>
+          <a class="btn btn-outline-secondary btn-sm" href="/form/<%= equipment.token %>/review"><%= t("section.goToReview") %></a>
+        </div>
       </div>
     </div>
   </div>
 </div>
 
-<%
-  const progress = Math.round(((sectionIndex + 1) / sections.length) * 100);
-%>
-
-<div class="card app-card mb-4">
+<div class="card app-card app-form-shell">
   <div class="card-body">
-    <div class="d-flex justify-content-between">
-      <strong><%= t("section.progress", { current: sectionIndex + 1, total: sections.length }) %></strong>
-      <span><%= progress %>%</span>
-    </div>
-    <div class="progress mt-2" role="progressbar" aria-valuenow="<%= progress %>" aria-valuemin="0" aria-valuemax="100">
-      <div class="progress-bar" style="width: <%= progress %>%"></div>
-    </div>
-  </div>
-</div>
-
-<div class="card app-card">
-  <div class="card-body">
-    <h2 class="h5 app-card-title mb-1"><%= section.title %></h2>
-    <p class="text-muted"><%= section.description %></p>
-
     <% if (saved) { %>
       <div class="alert alert-success"><%= t("section.savedDraft") %></div>
     <% } %>
 
-    <form class="needs-validation" method="post" novalidate>
+    <form id="specificationForm" class="needs-validation" method="post" novalidate>
       <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
-      <div class="row g-3">
-        <% section.fields.forEach((field) => { %>
-          <%- include("partials/field", { field, answersMap, errors }) %>
+      <div class="accordion app-accordion" id="specAccordion">
+        <% sections.forEach((section, index) => { %>
+          <div class="accordion-item app-accordion-item mb-3 border rounded-3">
+            <h2 class="accordion-header" id="heading_<%= index %>">
+              <button
+                class="accordion-button <%= index > 0 ? 'collapsed' : '' %>"
+                type="button"
+                data-bs-toggle="collapse"
+                data-bs-target="#collapse_<%= index %>"
+              >
+                <%= section.section %>
+              </button>
+            </h2>
+            <div id="collapse_<%= index %>" class="accordion-collapse collapse <%= index === 0 ? 'show' : '' %>" data-bs-parent="#specAccordion">
+              <div class="accordion-body">
+                <div class="row g-3">
+                  <% section.fields.forEach((field) => { %>
+                    <%- include("partials/field", { field, errors }) %>
+                  <% }) %>
+                </div>
+              </div>
+            </div>
+          </div>
         <% }) %>
       </div>
 
-      <div class="actions-row">
-        <% if (sectionIndex > 0) { %>
-          <button class="btn btn-outline-secondary" type="submit" name="action" value="previous"><%= t("section.previous") %></button>
-        <% } %>
-        <button class="btn btn-outline-primary" type="submit" name="action" value="draft"><%= t("section.saveDraft") %></button>
-        <button class="btn btn-primary ms-auto" type="submit" name="action" value="next">
-          <%= sectionIndex + 1 === sections.length ? t("section.finish") : t("section.next") %>
-        </button>
+      <div class="form-actions-sticky">
+        <a class="btn btn-outline-secondary" href="/form/<%= equipment.token %>/review"><%= t("section.cancel") %></a>
+        <button class="btn btn-primary" type="submit" name="action" value="draft"><%= t("section.saveSpecifications") %></button>
       </div>
     </form>
   </div>

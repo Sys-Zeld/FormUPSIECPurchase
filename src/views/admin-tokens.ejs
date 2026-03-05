@@ -7,6 +7,7 @@
       <p class="text-muted mb-0"><%= t("admin.pageSubtitle") %></p>
     </div>
     <div class="d-flex gap-2 flex-wrap">
+      <a class="btn btn-primary btn-sm" href="/admin/clients/new"><%= t("admin.newClientButton") %></a>
       <a class="btn btn-outline-primary btn-sm" href="/admin/fields"><%= t("admin.manageFieldsButton") %></a>
       <form method="post" action="/admin/logout">
         <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
@@ -29,6 +30,7 @@
             <th><%= t("admin.tableToken") %></th>
             <th><%= t("admin.tableBuyer") %></th>
             <th><%= t("admin.tableContact") %></th>
+            <th><%= t("admin.tableProfile") %></th>
             <th><%= t("admin.tableStatus") %></th>
             <th><%= t("admin.tableUpdatedAt") %></th>
             <th><%= t("admin.tableActions") %></th>
@@ -37,7 +39,7 @@
         <tbody>
           <% if (!rows.length) { %>
             <tr>
-              <td colspan="6" class="text-center text-muted py-4"><%= t("admin.noRecords") %></td>
+              <td colspan="7" class="text-center text-muted py-4"><%= t("admin.noRecords") %></td>
             </tr>
           <% } %>
           <% rows.forEach((row) => { %>
@@ -46,9 +48,10 @@
                 <code class="token-code"><%= row.token %></code>
               </td>
               <td><%= row.purchaser || "-" %></td>
-              <td><%= row.purchaser_contact || "-" %></td>
+              <td><%= row.purchaserContact || "-" %></td>
+              <td><%= row.profileName || "-" %></td>
               <td><span class="badge text-bg-light border"><%= row.status %></span></td>
-              <td><%= row.updated_at ? new Date(row.updated_at).toLocaleString(lang === "pt" ? "pt-BR" : "en-US") : "-" %></td>
+              <td><%= row.updatedAt ? new Date(row.updatedAt).toLocaleString(lang === "pt" ? "pt-BR" : "en-US") : "-" %></td>
               <td>
                 <div class="d-flex gap-2 flex-wrap">
                   <a class="btn btn-outline-primary btn-sm" href="/form/<%= row.token %>/review"><%= t("admin.viewButton") %></a>
