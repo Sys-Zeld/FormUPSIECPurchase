@@ -3,12 +3,21 @@ const path = require("path");
 const db = require("../db");
 const env = require("../config/env");
 
-const DOCS_DIR = path.join(process.cwd(), "dados", "docs");
+const DOCS_DIR = path.resolve(env.storage.docsDir);
 const MAX_DOCS_PER_EQUIPMENT = 10;
 const MAX_DOC_SIZE_BYTES = 10 * 1024 * 1024;
 
 function ensureDocsDirectory() {
-  fs.mkdirSync(DOCS_DIR, { recursive: true });
+  try {
+    fs.mkdirSync(DOCS_DIR, { recursive: true });
+  } catch (err) {
+    if (err.code === "EACCES") {
+      const permissionError = new Error(`No write permission for docs directory: ${DOCS_DIR}`);
+      permissionError.statusCode = 500;
+      throw permissionError;
+    }
+    throw err;
+  }
 }
 
 function normalizeDocumentRow(row) {
@@ -96,7 +105,16 @@ async function saveEquipmentDocument({ equipmentId, token, originalName, mimeTyp
   ensureDocsDirectory();
   const storedName = createStoredName(token, originalName);
   const diskPath = path.join(DOCS_DIR, storedName);
-  fs.writeFileSync(diskPath, buffer);
+  try {
+    fs.writeFileSync(diskPath, buffer);
+  } catch (err) {
+    if (err.code === "EACCES") {
+      const permissionError = new Error(`No write permission for file: ${diskPath}`);
+      permissionError.statusCode = 500;
+      throw permissionError;
+    }
+    throw err;
+  }
   const relativePath = `/dados/docs/${storedName}`;
   const externalUrl = `${env.appBaseUrl.replace(/\/+$/, "")}${relativePath}`;
 
