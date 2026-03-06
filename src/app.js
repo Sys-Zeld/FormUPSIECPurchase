@@ -32,11 +32,26 @@ const {
   listEquipments,
   getEquipmentById,
   getEquipmentByToken,
+  updateEquipmentClientData,
+  updateEquipmentConfiguration,
   updateEquipmentStatus,
-  deleteEquipmentById
+  deleteEquipmentById,
+  getEnabledFieldIdsForEquipment
 } = require("./services/equipments");
 const { getEquipmentSpecification, saveEquipmentSpecification } = require("./services/specifications");
-const { listProfiles, getProfileById, getProfileFieldIds, createProfile } = require("./services/profiles");
+const {
+  listProfiles,
+  getProfileById,
+  getProfileFieldIds,
+  listProfileEditableFields,
+  createProfile,
+  updateProfile,
+  deleteProfile,
+  createFieldInProfile,
+  deleteFieldFromProfile,
+  clearSectionFromProfile,
+  clearAllFieldsFromProfile
+} = require("./services/profiles");
 const {
   DOCS_DIR,
   MAX_DOCS_PER_EQUIPMENT,
@@ -161,6 +176,75 @@ function parseSelectedFieldIds(input) {
   return Array.from(unique);
 }
 
+function parseProfileFieldsFromBody(baseFields, body) {
+  return baseFields.map((field) => {
+    const id = Number(field.fieldId || field.id);
+    const enumText = sanitizeInput(body[`pf_enum_options_${id}`] || "");
+    const enumOptions = enumText
+      ? enumText.split(/\r?\n/).map((line) => sanitizeInput(line)).filter(Boolean)
+      : null;
+    const hasDefault = parseBooleanInput(body[`pf_has_default_${id}`]) === true;
+    const defaultValueRaw = sanitizeInput(body[`pf_default_value_${id}`]);
+    return {
+      fieldId: id,
+      isEnabled: parseBooleanInput(body[`pf_enabled_${id}`]) === true,
+      label: sanitizeInput(body[`pf_label_${id}`] || field.label || ""),
+      section: sanitizeInput(body[`pf_section_${id}`] || field.section || ""),
+      fieldType: sanitizeInput(body[`pf_field_type_${id}`] || field.fieldType || "text"),
+      unit: sanitizeInput(body[`pf_unit_${id}`] || field.unit || ""),
+      enumOptions,
+      hasDefault,
+      defaultValue: hasDefault ? defaultValueRaw : null,
+      displayOrder: Number(sanitizeInput(body[`pf_display_order_${id}`] || field.displayOrder || 0))
+    };
+  });
+}
+
+function parseProfileNewFieldFromBody(body, fallbackSection = "General") {
+  const enumLines = String(body.new_field_enum_options || "")
+    .split(/\r?\n/)
+    .map((line) => sanitizeInput(line))
+    .filter(Boolean);
+  const hasDefault = parseBooleanInput(body.new_field_has_default) === true;
+  return {
+    key: sanitizeInput(body.new_field_key),
+    label: sanitizeInput(body.new_field_label),
+    section: sanitizeInput(body.new_field_section) || fallbackSection,
+    fieldType: sanitizeInput(body.new_field_field_type) || "text",
+    unit: sanitizeInput(body.new_field_unit),
+    enumOptions: enumLines,
+    hasDefault,
+    defaultValue: hasDefault ? sanitizeInput(body.new_field_default_value) : null
+  };
+}
+
+function parseClientDataFromBody(body) {
+  return {
+    purchaser: sanitizeInput(body.purchaser),
+    purchaserContact: sanitizeInput(body.purchaser_contact),
+    contactEmail: sanitizeInput(body.contact_email),
+    contactPhone: sanitizeInput(body.contact_phone),
+    projectName: sanitizeInput(body.project_name),
+    siteName: sanitizeInput(body.site_name),
+    address: sanitizeInput(body.address)
+  };
+}
+
+function validateClientData(clientData, t) {
+  const errors = {};
+  if (!clientData.purchaser) errors.purchaser = t("admin.newClientRequired");
+  if (!clientData.purchaserContact) errors.purchaser_contact = t("admin.newClientRequired");
+  if (!clientData.contactEmail) errors.contact_email = t("admin.newClientRequired");
+  if (!clientData.contactPhone) errors.contact_phone = t("admin.newClientRequired");
+  if (!clientData.projectName) errors.project_name = t("admin.newClientRequired");
+  if (!clientData.siteName) errors.site_name = t("admin.newClientRequired");
+  if (!clientData.address) errors.address = t("admin.newClientRequired");
+  if (clientData.contactEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clientData.contactEmail)) {
+    errors.contact_email = t("admin.invalidEmail");
+  }
+  return errors;
+}
+
 async function renderAdminFieldsPage(req, res, options = {}) {
   const groupedMap = await listSectionsWithFields({ lang: req.lang });
   const presentSections = Object.keys(groupedMap).filter((section) => !SECTION_ORDER.includes(section));
@@ -178,7 +262,7 @@ async function renderAdminFieldsPage(req, res, options = {}) {
     formValues: options.formValues || {
       key: "",
       label: "",
-      section: SECTION_ORDER[0],
+      section: options.prefillSection || SECTION_ORDER[0],
       field_type: "text",
       unit: "",
       enum_options: "",
@@ -212,14 +296,108 @@ async function renderAdminNewClientPage(req, res, options = {}) {
     values: options.values || {
       purchaser: "",
       purchaser_contact: "",
-      profile_id: "",
-      profile_name: ""
+      contact_email: "",
+      contact_phone: "",
+      project_name: "",
+      site_name: "",
+      address: "",
+      profile_id: ""
     },
     errors: options.errors || {},
     sections,
     profiles,
     profileFieldMap,
     selectedFieldIds,
+    csrfToken: req.csrfToken()
+  });
+}
+
+async function buildFieldPickerData(lang) {
+  const groupedMap = await listSectionsWithFields({ lang });
+  const presentSections = Object.keys(groupedMap).filter((section) => !SECTION_ORDER.includes(section));
+  const sectionNames = [...SECTION_ORDER, ...presentSections];
+  const sections = sectionNames
+    .map((name) => ({ name, fields: groupedMap[name] || [] }))
+    .filter((item) => item.fields.length > 0);
+  const profiles = await listProfiles();
+  const profileFieldPairs = await Promise.all(
+    profiles.map(async (profile) => [String(profile.id), await getProfileFieldIds(profile.id)])
+  );
+  const profileFieldMap = Object.fromEntries(profileFieldPairs);
+  const allFieldIds = sections.flatMap((section) => section.fields.map((field) => field.id));
+  return { sections, profiles, profileFieldMap, allFieldIds };
+}
+
+async function getAllowedSelectedFieldIds(profileId, selectedFieldIds) {
+  const selectedSet = new Set(Array.isArray(selectedFieldIds) ? selectedFieldIds.map(Number) : []);
+  if (!profileId) return Array.from(selectedSet).filter((id) => Number.isInteger(id) && id > 0);
+  const allowed = await getProfileFieldIds(profileId);
+  const allowedSet = new Set(allowed);
+  return Array.from(selectedSet).filter((id) => allowedSet.has(id));
+}
+
+async function renderAdminClientConfigPage(req, res, equipment, options = {}) {
+  const picker = await buildFieldPickerData(req.lang);
+  const selectedFieldIds = Array.isArray(options.selectedFieldIds) ? options.selectedFieldIds : await getEnabledFieldIdsForEquipment(equipment.id);
+  res.status(options.statusCode || 200).render("admin-client-config", {
+    pageTitle: req.t("admin.clientConfigTitle"),
+    equipment,
+    values: options.values || {
+      purchaser: equipment.purchaser || "",
+      purchaser_contact: equipment.purchaserContact || "",
+      contact_email: equipment.contactEmail || "",
+      contact_phone: equipment.contactPhone || "",
+      project_name: equipment.projectName || "",
+      site_name: equipment.siteName || "",
+      address: equipment.address || "",
+      profile_id: equipment.profileId ? String(equipment.profileId) : ""
+    },
+    errors: options.errors || {},
+    sections: picker.sections,
+    profiles: picker.profiles,
+    profileFieldMap: picker.profileFieldMap,
+    selectedFieldIds: selectedFieldIds.length ? selectedFieldIds : picker.allFieldIds,
+    csrfToken: req.csrfToken()
+  });
+}
+
+async function renderAdminProfilesPage(req, res, options = {}) {
+  const profiles = await listProfiles();
+  const editingProfileId = options.editingProfileId || "";
+  const editableFields = editingProfileId
+    ? await listProfileEditableFields(Number(editingProfileId))
+    : await listProfileEditableFields(null);
+  const fieldsForForm = Array.isArray(options.fieldsForForm) ? options.fieldsForForm : editableFields;
+  const groupedMap = fieldsForForm.reduce((acc, field) => {
+    const section = field.section || "General";
+    if (!acc[section]) acc[section] = [];
+    acc[section].push(field);
+    return acc;
+  }, {});
+  const sections = Object.keys(groupedMap).map((name) => ({
+    name,
+    fields: groupedMap[name]
+  }));
+
+  res.status(options.statusCode || 200).render("admin-profiles", {
+    pageTitle: req.t("admin.profilesTitle"),
+    profiles,
+    sections,
+    editingProfileId,
+    formValues: options.formValues || { name: "" },
+    newFieldValues: options.newFieldValues || {
+      key: "",
+      label: "",
+      section: options.prefillSection || "",
+      field_type: "text",
+      unit: "",
+      enum_options: "",
+      has_default: false,
+      default_value: ""
+    },
+    errors: options.errors || {},
+    saved: req.query.saved === "1",
+    deleted: req.query.deleted === "1",
     csrfToken: req.csrfToken()
   });
 }
@@ -299,6 +477,7 @@ app.get("/admin/tokens", csrfProtection, requireAdminAuth, asyncHandler(async (r
   res.render("admin-tokens", {
     pageTitle: req.t("admin.pageTitle"),
     rows,
+    saved: req.query.saved === "1",
     deleted: req.query.deleted === "1",
     csrfToken: req.csrfToken()
   });
@@ -313,20 +492,216 @@ app.post("/admin/tokens/:id/delete", csrfProtection, requireAdminAuth, asyncHand
   return res.redirect("/admin/tokens?deleted=1");
 }));
 
+app.get("/admin/tokens/:id/config", csrfProtection, requireAdminAuth, asyncHandler(async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    return res.status(400).send(req.t("admin.invalidId"));
+  }
+  const equipment = await getEquipmentById(id);
+  if (!equipment) {
+    return res.status(404).send(req.t("app.submissionNotFound"));
+  }
+  await renderAdminClientConfigPage(req, res, equipment);
+}));
+
+app.post("/admin/tokens/:id/config", csrfProtection, requireAdminAuth, asyncHandler(async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    return res.status(400).send(req.t("admin.invalidId"));
+  }
+  const equipment = await getEquipmentById(id);
+  if (!equipment) {
+    return res.status(404).send(req.t("app.submissionNotFound"));
+  }
+
+  const clientData = parseClientDataFromBody(req.body);
+  const profileIdRaw = sanitizeInput(req.body.profile_id);
+  const selectedFieldIdsRaw = parseSelectedFieldIds(req.body.enabled_fields);
+  const errors = validateClientData(clientData, req.t);
+
+  let profileId = null;
+  let selectedProfile = null;
+  if (profileIdRaw) {
+    const parsed = Number(profileIdRaw);
+    if (!Number.isInteger(parsed) || parsed <= 0) {
+      errors.profile_id = req.t("admin.invalidId");
+    } else {
+      const profile = await getProfileById(parsed);
+      if (!profile) errors.profile_id = req.t("admin.invalidId");
+      else {
+        profileId = profile.id;
+        selectedProfile = profile;
+      }
+    }
+  }
+  const selectedFieldIds = await getAllowedSelectedFieldIds(profileId, selectedFieldIdsRaw);
+  if (!selectedFieldIds.length) errors.enabled_fields = req.t("admin.newClientFieldsRequired");
+
+  if (Object.keys(errors).length > 0) {
+    return renderAdminClientConfigPage(req, res, equipment, {
+      statusCode: 422,
+      values: {
+        purchaser: clientData.purchaser,
+        purchaser_contact: clientData.purchaserContact,
+        contact_email: clientData.contactEmail,
+        contact_phone: clientData.contactPhone,
+        project_name: clientData.projectName,
+        site_name: clientData.siteName,
+        address: clientData.address,
+        profile_id: profileIdRaw
+      },
+      selectedFieldIds,
+      errors
+    });
+  }
+
+  await updateEquipmentConfiguration(id, {
+    purchaser: clientData.purchaser,
+    purchaserContact: clientData.purchaserContact,
+    contactEmail: clientData.contactEmail,
+    contactPhone: clientData.contactPhone,
+    projectName: clientData.projectName,
+    siteName: clientData.siteName,
+    address: clientData.address,
+    profileId,
+    enabledFieldIds: selectedFieldIds
+  });
+  return res.redirect("/admin/tokens?saved=1");
+}));
+
+app.get("/admin/profiles", csrfProtection, requireAdminAuth, asyncHandler(async (req, res) => {
+  const prefillSection = sanitizeInput(req.query.new_section);
+  const editId = Number(req.query.edit);
+  if (Number.isInteger(editId) && editId > 0) {
+    const profile = await getProfileById(editId);
+    if (profile) {
+      return renderAdminProfilesPage(req, res, {
+        editingProfileId: String(editId),
+        formValues: { name: profile.name },
+        prefillSection
+      });
+    }
+  }
+  return renderAdminProfilesPage(req, res, { prefillSection });
+}));
+
+app.post("/admin/profiles/create", csrfProtection, requireAdminAuth, asyncHandler(async (req, res) => {
+  const name = sanitizeInput(req.body.name);
+  const baseFields = await listProfileEditableFields(null);
+  const profileFields = parseProfileFieldsFromBody(baseFields, req.body);
+  try {
+    await createProfile({ name, fields: profileFields });
+    return res.redirect("/admin/profiles?saved=1");
+  } catch (err) {
+    return renderAdminProfilesPage(req, res, {
+      statusCode: err.statusCode || 422,
+      formValues: { name },
+      fieldsForForm: profileFields,
+      errors: err.details || { generic: err.message }
+    });
+  }
+}));
+
+app.post("/admin/profiles/:id/update", csrfProtection, requireAdminAuth, asyncHandler(async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    return res.status(400).send(req.t("admin.invalidId"));
+  }
+  const name = sanitizeInput(req.body.name);
+  const baseFields = await listProfileEditableFields(id);
+  const profileFields = parseProfileFieldsFromBody(baseFields, req.body);
+  try {
+    await updateProfile(id, { name, fields: profileFields });
+    return res.redirect("/admin/profiles?saved=1");
+  } catch (err) {
+    return renderAdminProfilesPage(req, res, {
+      statusCode: err.statusCode || 422,
+      editingProfileId: String(id),
+      formValues: { name },
+      fieldsForForm: profileFields,
+      errors: err.details || { generic: err.message }
+    });
+  }
+}));
+
+app.post("/admin/profiles/:id/delete", csrfProtection, requireAdminAuth, asyncHandler(async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    return res.status(400).send(req.t("admin.invalidId"));
+  }
+  await deleteProfile(id);
+  return res.redirect("/admin/profiles?deleted=1");
+}));
+
+app.post("/admin/profiles/:id/fields/create", csrfProtection, requireAdminAuth, asyncHandler(async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    return res.status(400).send(req.t("admin.invalidId"));
+  }
+  const payload = parseProfileNewFieldFromBody(req.body, sanitizeInput(req.body.new_field_section) || "General");
+  const newFieldValues = {
+    key: payload.key,
+    label: payload.label,
+    section: payload.section,
+    field_type: payload.fieldType,
+    unit: payload.unit || "",
+    enum_options: (payload.enumOptions || []).join("\n"),
+    has_default: payload.hasDefault,
+    default_value: payload.defaultValue || ""
+  };
+  try {
+    await createFieldInProfile(id, payload);
+    return res.redirect(`/admin/profiles?edit=${id}&saved=1`);
+  } catch (err) {
+    const profile = await getProfileById(id);
+    return renderAdminProfilesPage(req, res, {
+      statusCode: err.statusCode || 422,
+      editingProfileId: String(id),
+      formValues: { name: profile ? profile.name : "" },
+      newFieldValues,
+      errors: err.details || { generic: err.message }
+    });
+  }
+}));
+
+app.post("/admin/profiles/:id/fields/:fieldId/delete", csrfProtection, requireAdminAuth, asyncHandler(async (req, res) => {
+  const id = Number(req.params.id);
+  const fieldId = Number(req.params.fieldId);
+  if (!Number.isInteger(id) || id <= 0 || !Number.isInteger(fieldId) || fieldId <= 0) {
+    return res.status(400).send(req.t("admin.invalidId"));
+  }
+  await deleteFieldFromProfile(id, fieldId);
+  return res.redirect(`/admin/profiles?edit=${id}&saved=1`);
+}));
+
+app.post("/admin/profiles/:id/sections/clear", csrfProtection, requireAdminAuth, asyncHandler(async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    return res.status(400).send(req.t("admin.invalidId"));
+  }
+  const sectionName = sanitizeInput(req.body.section_name || req.body.clear_section);
+  await clearSectionFromProfile(id, sectionName);
+  return res.redirect(`/admin/profiles?edit=${id}&saved=1`);
+}));
+
+app.post("/admin/profiles/:id/clear", csrfProtection, requireAdminAuth, asyncHandler(async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    return res.status(400).send(req.t("admin.invalidId"));
+  }
+  await clearAllFieldsFromProfile(id);
+  return res.redirect(`/admin/profiles?edit=${id}&saved=1`);
+}));
+
 app.get("/admin/clients/new", csrfProtection, requireAdminAuth, asyncHandler(async (req, res) => {
   await renderAdminNewClientPage(req, res);
 }));
 
 app.post("/admin/clients/new", csrfProtection, requireAdminAuth, asyncHandler(async (req, res) => {
-  const purchaser = sanitizeInput(req.body.purchaser);
-  const purchaserContact = sanitizeInput(req.body.purchaser_contact);
+  const clientData = parseClientDataFromBody(req.body);
   const profileIdRaw = sanitizeInput(req.body.profile_id);
-  const profileName = sanitizeInput(req.body.profile_name);
-  const selectedFieldIds = parseSelectedFieldIds(req.body.enabled_fields);
-  const errors = {};
-  if (!purchaser) errors.purchaser = req.t("admin.newClientRequired");
-  if (!purchaserContact) errors.purchaser_contact = req.t("admin.newClientRequired");
-  if (!selectedFieldIds.length) errors.enabled_fields = req.t("admin.newClientFieldsRequired");
+  const selectedFieldIdsRaw = parseSelectedFieldIds(req.body.enabled_fields);
+  const errors = validateClientData(clientData, req.t);
 
   let selectedProfile = null;
   if (profileIdRaw) {
@@ -340,44 +715,37 @@ app.post("/admin/clients/new", csrfProtection, requireAdminAuth, asyncHandler(as
       }
     }
   }
+  const selectedFieldIds = await getAllowedSelectedFieldIds(selectedProfile ? selectedProfile.id : null, selectedFieldIdsRaw);
+  if (!selectedFieldIds.length) errors.enabled_fields = req.t("admin.newClientFieldsRequired");
 
   if (Object.keys(errors).length > 0) {
     return renderAdminNewClientPage(req, res, {
       statusCode: 422,
       values: {
-        purchaser,
-        purchaser_contact: purchaserContact,
-        profile_id: profileIdRaw,
-        profile_name: profileName
+        purchaser: clientData.purchaser,
+        purchaser_contact: clientData.purchaserContact,
+        contact_email: clientData.contactEmail,
+        contact_phone: clientData.contactPhone,
+        project_name: clientData.projectName,
+        site_name: clientData.siteName,
+        address: clientData.address,
+        profile_id: profileIdRaw
       },
       errors,
       selectedFieldIds
     });
   }
 
-  let profileId = selectedProfile ? selectedProfile.id : null;
-  if (profileName) {
-    try {
-      const createdProfile = await createProfile({ name: profileName, fieldIds: selectedFieldIds });
-      profileId = createdProfile.id;
-    } catch (err) {
-      return renderAdminNewClientPage(req, res, {
-        statusCode: err.statusCode || 422,
-        values: {
-          purchaser,
-          purchaser_contact: purchaserContact,
-          profile_id: profileIdRaw,
-          profile_name: profileName
-        },
-        errors: err.details || { generic: err.message },
-        selectedFieldIds
-      });
-    }
-  }
+  const profileId = selectedProfile ? selectedProfile.id : null;
 
   const equipment = await createEquipment({
-    purchaser,
-    purchaserContact,
+    purchaser: clientData.purchaser,
+    purchaserContact: clientData.purchaserContact,
+    contactEmail: clientData.contactEmail,
+    contactPhone: clientData.contactPhone,
+    projectName: clientData.projectName,
+    siteName: clientData.siteName,
+    address: clientData.address,
     profileId,
     enabledFieldIds: selectedFieldIds
   });
@@ -385,6 +753,7 @@ app.post("/admin/clients/new", csrfProtection, requireAdminAuth, asyncHandler(as
 }));
 
 app.get("/admin/fields", csrfProtection, requireAdminAuth, asyncHandler(async (req, res) => {
+  const prefillSection = sanitizeInput(req.query.new_section);
   const editId = Number(req.query.edit);
   if (Number.isInteger(editId) && editId > 0) {
     const field = await getFieldById(editId);
@@ -405,7 +774,7 @@ app.get("/admin/fields", csrfProtection, requireAdminAuth, asyncHandler(async (r
       return;
     }
   }
-  await renderAdminFieldsPage(req, res);
+  await renderAdminFieldsPage(req, res, { prefillSection });
 }));
 
 app.post("/admin/fields/create", csrfProtection, requireAdminAuth, asyncHandler(async (req, res) => {
@@ -533,11 +902,21 @@ app.get("/form/:token/specification", csrfProtection, asyncHandler(async (req, r
   res.render("section", {
     pageTitle: req.t("section.headerTitle"),
     equipment,
+    clientValues: {
+      purchaser: equipment.purchaser || "",
+      purchaser_contact: equipment.purchaserContact || "",
+      contact_email: equipment.contactEmail || "",
+      contact_phone: equipment.contactPhone || "",
+      project_name: equipment.projectName || "",
+      site_name: equipment.siteName || "",
+      address: equipment.address || ""
+    },
     sections: buildSpecificationRenderModel(specification),
     documents,
     docsMaxCount: MAX_DOCS_PER_EQUIPMENT,
     docsMaxSizeBytes: MAX_DOC_SIZE_BYTES,
     errors: {},
+    clientErrors: {},
     saved: req.query.saved === "1",
     qrDataUrl: qr.qrDataUrl,
     csrfToken: req.csrfToken()
@@ -548,26 +927,48 @@ app.post("/form/:token/specification", csrfProtection, asyncHandler(async (req, 
   const equipment = await resolveEquipmentByTokenOr404(req, res);
   if (!equipment) return;
 
+  const clientData = parseClientDataFromBody(req.body);
+  const clientErrors = validateClientData(clientData, req.t);
+
   const specification = await getEquipmentSpecification(equipment.id, null, req.lang);
   const allFields = specification.sections.flatMap((section) => section.fields);
   const parsed = parseSpecificationFormBody(allFields, req.body);
-  if (Object.keys(parsed.errors).length > 0) {
+  if (Object.keys(parsed.errors).length > 0 || Object.keys(clientErrors).length > 0) {
     const documents = await listEquipmentDocuments(equipment.id);
     const qr = await buildSubmissionQrPayload(equipment.token, []);
     return res.status(422).render("section", {
       pageTitle: req.t("section.headerTitle"),
       equipment,
+      clientValues: {
+        purchaser: clientData.purchaser,
+        purchaser_contact: clientData.purchaserContact,
+        contact_email: clientData.contactEmail,
+        contact_phone: clientData.contactPhone,
+        project_name: clientData.projectName,
+        site_name: clientData.siteName,
+        address: clientData.address
+      },
       sections: buildSpecificationRenderModel(specification, parsed.submittedValues),
       documents,
       docsMaxCount: MAX_DOCS_PER_EQUIPMENT,
       docsMaxSizeBytes: MAX_DOC_SIZE_BYTES,
       errors: parsed.errors,
+      clientErrors,
       saved: false,
       qrDataUrl: qr.qrDataUrl,
       csrfToken: req.csrfToken()
     });
   }
 
+  await updateEquipmentClientData(equipment.id, {
+    purchaser: clientData.purchaser,
+    purchaserContact: clientData.purchaserContact,
+    contactEmail: clientData.contactEmail,
+    contactPhone: clientData.contactPhone,
+    projectName: clientData.projectName,
+    siteName: clientData.siteName,
+    address: clientData.address
+  });
   await saveEquipmentSpecification(equipment.id, parsed.values);
   if (sanitizeInput(req.body.action) === "review") {
     return res.redirect(`/form/${equipment.token}/review`);

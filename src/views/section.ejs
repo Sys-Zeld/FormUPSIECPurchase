@@ -28,6 +28,99 @@
 
     <form id="specificationForm" class="needs-validation" method="post" novalidate>
       <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+
+      <div class="card app-card mb-3">
+        <div class="card-body">
+          <h2 class="h6 app-card-title mb-3"><%= t("section.clientDataTitle") %></h2>
+          <div class="row g-3">
+            <div class="col-12 col-lg-6">
+              <label for="purchaser" class="form-label"><%= t("admin.clientNameLabel") %></label>
+              <input
+                id="purchaser"
+                name="purchaser"
+                type="text"
+                class="form-control <%= clientErrors && clientErrors.purchaser ? 'is-invalid' : '' %>"
+                value="<%= clientValues ? clientValues.purchaser : '' %>"
+                required
+              />
+              <% if (clientErrors && clientErrors.purchaser) { %><div class="invalid-feedback d-block"><%= clientErrors.purchaser %></div><% } %>
+            </div>
+            <div class="col-12 col-lg-6">
+              <label for="purchaser_contact" class="form-label"><%= t("admin.clientContactLabel") %></label>
+              <input
+                id="purchaser_contact"
+                name="purchaser_contact"
+                type="text"
+                class="form-control <%= clientErrors && clientErrors.purchaser_contact ? 'is-invalid' : '' %>"
+                value="<%= clientValues ? clientValues.purchaser_contact : '' %>"
+                required
+              />
+              <% if (clientErrors && clientErrors.purchaser_contact) { %><div class="invalid-feedback d-block"><%= clientErrors.purchaser_contact %></div><% } %>
+            </div>
+            <div class="col-12 col-lg-6">
+              <label for="contact_email" class="form-label"><%= t("admin.clientContactEmailLabel") %></label>
+              <input
+                id="contact_email"
+                name="contact_email"
+                type="email"
+                class="form-control <%= clientErrors && clientErrors.contact_email ? 'is-invalid' : '' %>"
+                value="<%= clientValues ? clientValues.contact_email : '' %>"
+                required
+              />
+              <% if (clientErrors && clientErrors.contact_email) { %><div class="invalid-feedback d-block"><%= clientErrors.contact_email %></div><% } %>
+            </div>
+            <div class="col-12 col-lg-6">
+              <label for="contact_phone" class="form-label"><%= t("admin.clientContactPhoneLabel") %></label>
+              <input
+                id="contact_phone"
+                name="contact_phone"
+                type="text"
+                class="form-control <%= clientErrors && clientErrors.contact_phone ? 'is-invalid' : '' %>"
+                value="<%= clientValues ? clientValues.contact_phone : '' %>"
+                required
+              />
+              <% if (clientErrors && clientErrors.contact_phone) { %><div class="invalid-feedback d-block"><%= clientErrors.contact_phone %></div><% } %>
+            </div>
+            <div class="col-12 col-lg-6">
+              <label for="project_name" class="form-label"><%= t("admin.projectNameLabel") %></label>
+              <input
+                id="project_name"
+                name="project_name"
+                type="text"
+                class="form-control <%= clientErrors && clientErrors.project_name ? 'is-invalid' : '' %>"
+                value="<%= clientValues ? clientValues.project_name : '' %>"
+                required
+              />
+              <% if (clientErrors && clientErrors.project_name) { %><div class="invalid-feedback d-block"><%= clientErrors.project_name %></div><% } %>
+            </div>
+            <div class="col-12 col-lg-6">
+              <label for="site_name" class="form-label"><%= t("admin.siteNameLabel") %></label>
+              <input
+                id="site_name"
+                name="site_name"
+                type="text"
+                class="form-control <%= clientErrors && clientErrors.site_name ? 'is-invalid' : '' %>"
+                value="<%= clientValues ? clientValues.site_name : '' %>"
+                required
+              />
+              <% if (clientErrors && clientErrors.site_name) { %><div class="invalid-feedback d-block"><%= clientErrors.site_name %></div><% } %>
+            </div>
+            <div class="col-12">
+              <label for="address" class="form-label"><%= t("admin.addressLabel") %></label>
+              <input
+                id="address"
+                name="address"
+                type="text"
+                class="form-control <%= clientErrors && clientErrors.address ? 'is-invalid' : '' %>"
+                value="<%= clientValues ? clientValues.address : '' %>"
+                required
+              />
+              <% if (clientErrors && clientErrors.address) { %><div class="invalid-feedback d-block"><%= clientErrors.address %></div><% } %>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="accordion app-accordion" id="specAccordion">
         <% sections.forEach((section, index) => { %>
           <div class="accordion-item app-accordion-item mb-3 border rounded-3">

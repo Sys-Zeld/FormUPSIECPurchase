@@ -21,6 +21,46 @@
   <div class="alert alert-success"><%= t("review.emailSent") %></div>
 <% } %>
 
+<div class="card app-card mb-3">
+  <div class="card-body">
+    <h2 class="h6 app-card-title"><%= t("review.clientDataTitle") %></h2>
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0 app-table">
+        <tbody>
+          <tr>
+            <th><%= t("admin.clientNameLabel") %></th>
+            <td><%= equipment.purchaser || "-" %></td>
+          </tr>
+          <tr>
+            <th><%= t("admin.clientContactLabel") %></th>
+            <td><%= equipment.purchaserContact || "-" %></td>
+          </tr>
+          <tr>
+            <th><%= t("admin.clientContactEmailLabel") %></th>
+            <td><%= equipment.contactEmail || "-" %></td>
+          </tr>
+          <tr>
+            <th><%= t("admin.clientContactPhoneLabel") %></th>
+            <td><%= equipment.contactPhone || "-" %></td>
+          </tr>
+          <tr>
+            <th><%= t("admin.projectNameLabel") %></th>
+            <td><%= equipment.projectName || "-" %></td>
+          </tr>
+          <tr>
+            <th><%= t("admin.siteNameLabel") %></th>
+            <td><%= equipment.siteName || "-" %></td>
+          </tr>
+          <tr>
+            <th><%= t("admin.addressLabel") %></th>
+            <td><%= equipment.address || "-" %></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
 <% sections.forEach((section) => { %>
   <div class="card app-card mb-3">
     <div class="card-body">

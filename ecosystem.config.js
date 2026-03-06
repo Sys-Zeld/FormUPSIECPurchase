@@ -1,7 +1,7 @@
 module.exports = {
   apps: [
     {
-      name: "annexd-form",
+      name: "APP-FORM-UPS-IEC",
       script: "src/app.js",
       instances: 1,
       exec_mode: "fork",

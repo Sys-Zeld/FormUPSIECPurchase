@@ -126,6 +126,7 @@ async function generatePdfBuffer({ submission, sections, lang }) {
   const t = createTranslator(lang);
   const tableLabels =
     lang === "en" ? ["CHARACTERISTIC", "UNIT", "DEFAULT"] : ["CARACTERISTICA", "UNIDADE", "DEFAULT"];
+  const clientTableLabels = lang === "en" ? ["FIELD", "VALUE"] : ["CAMPO", "VALOR"];
   const submissionLink = resolveSubmissionLink(submission, sections);
   const qrBuffer = await QRCode.toBuffer(submissionLink, {
     width: 220,
@@ -182,6 +183,41 @@ async function generatePdfBuffer({ submission, sections, lang }) {
       doc.y = minHeaderBottom;
     }
     doc.moveDown(0.5);
+
+    const clientRows = [
+      [t("admin.clientNameLabel"), submission.purchaser || "-"],
+      [t("admin.clientContactLabel"), submission.purchaserContact || "-"],
+      [t("admin.clientContactEmailLabel"), submission.contactEmail || "-"],
+      [t("admin.clientContactPhoneLabel"), submission.contactPhone || "-"],
+      [t("admin.projectNameLabel"), submission.projectName || "-"],
+      [t("admin.siteNameLabel"), submission.siteName || "-"],
+      [t("admin.addressLabel"), submission.address || "-"]
+    ];
+    const clientColWidths = [contentWidth * 0.35, contentWidth * 0.65];
+    ensureSpace(doc, 20 + 22 + 8);
+    drawSectionTitle(doc, { x: startX, width: contentWidth, text: t("review.clientDataTitle") });
+    drawTableHeader(doc, { x: startX, widths: clientColWidths, labels: clientTableLabels });
+    clientRows.forEach((cells) => {
+      const rowHeight = rowHeightForCells(doc, clientColWidths, cells);
+      if (doc.y + rowHeight > doc.page.height - doc.page.margins.bottom) {
+        doc.addPage();
+        drawSectionTitle(doc, { x: startX, width: contentWidth, text: t("review.clientDataTitle") });
+        drawTableHeader(doc, { x: startX, widths: clientColWidths, labels: clientTableLabels });
+      }
+      drawRow(doc, {
+        x: startX,
+        y: doc.y,
+        widths: clientColWidths,
+        cells,
+        rowHeight,
+        options: {
+          fillColor: "#cfcfcf",
+          borderColor: "#ffffff"
+        }
+      });
+      doc.y += rowHeight;
+    });
+    doc.moveDown(0.6);
 
     sections.forEach((section) => {
       const sectionHeaderHeight = 20;

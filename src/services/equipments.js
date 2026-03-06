@@ -7,6 +7,11 @@ function normalizeEquipmentRow(row) {
     token: row.token,
     purchaser: row.purchaser || "",
     purchaserContact: row.purchaser_contact || "",
+    contactEmail: row.contact_email || "",
+    contactPhone: row.contact_phone || "",
+    projectName: row.project_name || "",
+    siteName: row.site_name || "",
+    address: row.address || "",
     profileId: row.profile_id ? Number(row.profile_id) : null,
     profileName: row.profile_name || null,
     status: row.status || "draft",
@@ -27,7 +32,17 @@ function normalizeFieldIds(fieldIds) {
   return Array.from(unique);
 }
 
-async function createEquipment({ purchaser, purchaserContact, profileId = null, enabledFieldIds = null }) {
+async function createEquipment({
+  purchaser,
+  purchaserContact,
+  contactEmail = "",
+  contactPhone = "",
+  projectName = "",
+  siteName = "",
+  address = "",
+  profileId = null,
+  enabledFieldIds = null
+}) {
   const token = uuidv4().replace(/-/g, "");
   const cleanProfileId = Number.isInteger(Number(profileId)) && Number(profileId) > 0 ? Number(profileId) : null;
   const cleanEnabledFieldIds = enabledFieldIds === null ? null : normalizeFieldIds(enabledFieldIds);
@@ -36,11 +51,34 @@ async function createEquipment({ purchaser, purchaserContact, profileId = null, 
     await client.query("BEGIN");
     const result = await client.query(
       `
-        INSERT INTO equipments (token, purchaser, purchaser_contact, profile_id, status, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, 'draft', NOW(), NOW())
+        INSERT INTO equipments (
+          token,
+          purchaser,
+          purchaser_contact,
+          contact_email,
+          contact_phone,
+          project_name,
+          site_name,
+          address,
+          profile_id,
+          status,
+          created_at,
+          updated_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'draft', NOW(), NOW())
         RETURNING *
       `,
-      [token, purchaser || "", purchaserContact || "", cleanProfileId]
+      [
+        token,
+        purchaser || "",
+        purchaserContact || "",
+        contactEmail || "",
+        contactPhone || "",
+        projectName || "",
+        siteName || "",
+        address || "",
+        cleanProfileId
+      ]
     );
     const equipment = normalizeEquipmentRow(result.rows[0]);
 
@@ -109,6 +147,32 @@ async function updateEquipmentStatus(id, status) {
   await db.query("UPDATE equipments SET status = $2, updated_at = NOW() WHERE id = $1", [id, status]);
 }
 
+async function updateEquipmentClientData(id, {
+  purchaser,
+  purchaserContact,
+  contactEmail = "",
+  contactPhone = "",
+  projectName = "",
+  siteName = "",
+  address = ""
+}) {
+  await db.query(
+    `
+      UPDATE equipments
+      SET purchaser = $2,
+          purchaser_contact = $3,
+          contact_email = $4,
+          contact_phone = $5,
+          project_name = $6,
+          site_name = $7,
+          address = $8,
+          updated_at = NOW()
+      WHERE id = $1
+    `,
+    [id, purchaser || "", purchaserContact || "", contactEmail || "", contactPhone || "", projectName || "", siteName || "", address || ""]
+  );
+}
+
 async function deleteEquipmentById(id) {
   const result = await db.query("DELETE FROM equipments WHERE id = $1", [id]);
   return result.rowCount > 0;
@@ -122,11 +186,65 @@ async function getEnabledFieldIdsForEquipment(equipmentId) {
   return result.rows.map((row) => Number(row.field_id));
 }
 
+async function updateEquipmentConfiguration(id, {
+  purchaser,
+  purchaserContact,
+  contactEmail = "",
+  contactPhone = "",
+  projectName = "",
+  siteName = "",
+  address = "",
+  profileId = null,
+  enabledFieldIds = []
+}) {
+  const cleanProfileId = Number.isInteger(Number(profileId)) && Number(profileId) > 0 ? Number(profileId) : null;
+  const cleanEnabledFieldIds = normalizeFieldIds(enabledFieldIds);
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(
+      `
+        UPDATE equipments
+        SET purchaser = $2,
+            purchaser_contact = $3,
+            contact_email = $4,
+            contact_phone = $5,
+            project_name = $6,
+            site_name = $7,
+            address = $8,
+            profile_id = $9,
+            updated_at = NOW()
+        WHERE id = $1
+      `,
+      [id, purchaser || "", purchaserContact || "", contactEmail || "", contactPhone || "", projectName || "", siteName || "", address || "", cleanProfileId]
+    );
+    await client.query("DELETE FROM equipment_enabled_fields WHERE equipment_id = $1", [id]);
+    for (const fieldId of cleanEnabledFieldIds) {
+      await client.query(
+        `
+          INSERT INTO equipment_enabled_fields (equipment_id, field_id, created_at)
+          VALUES ($1, $2, NOW())
+          ON CONFLICT (equipment_id, field_id) DO NOTHING
+        `,
+        [id, fieldId]
+      );
+    }
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 module.exports = {
   createEquipment,
   getEquipmentById,
   getEquipmentByToken,
   listEquipments,
+  updateEquipmentClientData,
+  updateEquipmentConfiguration,
   updateEquipmentStatus,
   deleteEquipmentById,
   getEnabledFieldIdsForEquipment

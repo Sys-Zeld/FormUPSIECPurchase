@@ -3,8 +3,8 @@
 <div class="card app-card mb-4">
   <div class="card-body d-flex justify-content-between align-items-center gap-2 flex-wrap">
     <div>
-      <h1 class="h4 app-card-title mb-1"><%= t("admin.newClientTitle") %></h1>
-      <p class="text-muted mb-0"><%= t("admin.newClientSubtitle") %></p>
+      <h1 class="h4 app-card-title mb-1"><%= t("admin.clientConfigTitle") %></h1>
+      <p class="text-muted mb-0"><%= equipment.token %> - <%= equipment.purchaser || "-" %></p>
     </div>
     <a class="btn btn-outline-secondary btn-sm" href="/admin/tokens"><%= t("admin.backToTokensButton") %></a>
   </div>
@@ -12,102 +12,45 @@
 
 <div class="card app-card">
   <div class="card-body">
-    <form method="post" action="/admin/clients/new" class="row g-3 needs-validation" novalidate>
+    <form method="post" action="/admin/tokens/<%= equipment.id %>/config" class="row g-3 needs-validation" novalidate>
       <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
       <% if (errors.generic) { %>
-        <div class="col-12">
-          <div class="alert alert-danger mb-0"><%= errors.generic %></div>
-        </div>
+        <div class="col-12"><div class="alert alert-danger mb-0"><%= errors.generic %></div></div>
       <% } %>
 
-      <div class="col-12">
+      <div class="col-12 col-lg-6">
         <label for="purchaser" class="form-label"><%= t("admin.clientNameLabel") %></label>
-        <input
-          id="purchaser"
-          name="purchaser"
-          type="text"
-          class="form-control <%= errors.purchaser ? 'is-invalid' : '' %>"
-          value="<%= values.purchaser %>"
-          required
-        />
+        <input id="purchaser" name="purchaser" type="text" class="form-control <%= errors.purchaser ? 'is-invalid' : '' %>" value="<%= values.purchaser || '' %>" required />
         <% if (errors.purchaser) { %><div class="invalid-feedback d-block"><%= errors.purchaser %></div><% } %>
       </div>
-
-      <div class="col-12">
+      <div class="col-12 col-lg-6">
         <label for="purchaser_contact" class="form-label"><%= t("admin.clientContactLabel") %></label>
-        <input
-          id="purchaser_contact"
-          name="purchaser_contact"
-          type="text"
-          class="form-control <%= errors.purchaser_contact ? 'is-invalid' : '' %>"
-          value="<%= values.purchaser_contact %>"
-          required
-        />
+        <input id="purchaser_contact" name="purchaser_contact" type="text" class="form-control <%= errors.purchaser_contact ? 'is-invalid' : '' %>" value="<%= values.purchaser_contact || '' %>" required />
         <% if (errors.purchaser_contact) { %><div class="invalid-feedback d-block"><%= errors.purchaser_contact %></div><% } %>
       </div>
-
       <div class="col-12 col-lg-6">
         <label for="contact_email" class="form-label"><%= t("admin.clientContactEmailLabel") %></label>
-        <input
-          id="contact_email"
-          name="contact_email"
-          type="email"
-          class="form-control <%= errors.contact_email ? 'is-invalid' : '' %>"
-          value="<%= values.contact_email || '' %>"
-          required
-        />
+        <input id="contact_email" name="contact_email" type="email" class="form-control <%= errors.contact_email ? 'is-invalid' : '' %>" value="<%= values.contact_email || '' %>" required />
         <% if (errors.contact_email) { %><div class="invalid-feedback d-block"><%= errors.contact_email %></div><% } %>
       </div>
-
       <div class="col-12 col-lg-6">
         <label for="contact_phone" class="form-label"><%= t("admin.clientContactPhoneLabel") %></label>
-        <input
-          id="contact_phone"
-          name="contact_phone"
-          type="text"
-          class="form-control <%= errors.contact_phone ? 'is-invalid' : '' %>"
-          value="<%= values.contact_phone || '' %>"
-          required
-        />
+        <input id="contact_phone" name="contact_phone" type="text" class="form-control <%= errors.contact_phone ? 'is-invalid' : '' %>" value="<%= values.contact_phone || '' %>" required />
         <% if (errors.contact_phone) { %><div class="invalid-feedback d-block"><%= errors.contact_phone %></div><% } %>
       </div>
-
       <div class="col-12 col-lg-6">
         <label for="project_name" class="form-label"><%= t("admin.projectNameLabel") %></label>
-        <input
-          id="project_name"
-          name="project_name"
-          type="text"
-          class="form-control <%= errors.project_name ? 'is-invalid' : '' %>"
-          value="<%= values.project_name || '' %>"
-          required
-        />
+        <input id="project_name" name="project_name" type="text" class="form-control <%= errors.project_name ? 'is-invalid' : '' %>" value="<%= values.project_name || '' %>" required />
         <% if (errors.project_name) { %><div class="invalid-feedback d-block"><%= errors.project_name %></div><% } %>
       </div>
-
       <div class="col-12 col-lg-6">
         <label for="site_name" class="form-label"><%= t("admin.siteNameLabel") %></label>
-        <input
-          id="site_name"
-          name="site_name"
-          type="text"
-          class="form-control <%= errors.site_name ? 'is-invalid' : '' %>"
-          value="<%= values.site_name || '' %>"
-          required
-        />
+        <input id="site_name" name="site_name" type="text" class="form-control <%= errors.site_name ? 'is-invalid' : '' %>" value="<%= values.site_name || '' %>" required />
         <% if (errors.site_name) { %><div class="invalid-feedback d-block"><%= errors.site_name %></div><% } %>
       </div>
-
       <div class="col-12">
         <label for="address" class="form-label"><%= t("admin.addressLabel") %></label>
-        <input
-          id="address"
-          name="address"
-          type="text"
-          class="form-control <%= errors.address ? 'is-invalid' : '' %>"
-          value="<%= values.address || '' %>"
-          required
-        />
+        <input id="address" name="address" type="text" class="form-control <%= errors.address ? 'is-invalid' : '' %>" value="<%= values.address || '' %>" required />
         <% if (errors.address) { %><div class="invalid-feedback d-block"><%= errors.address %></div><% } %>
       </div>
 
@@ -148,14 +91,7 @@
                     <% section.fields.forEach((field) => { %>
                       <div class="col-12 col-md-6 field-item">
                         <div class="form-check">
-                          <input
-                            class="form-check-input field-checkbox"
-                            type="checkbox"
-                            id="enabled_field_<%= field.id %>"
-                            name="enabled_fields"
-                            value="<%= field.id %>"
-                            <%= selectedFieldIds.includes(field.id) ? 'checked' : '' %>
-                          />
+                          <input class="form-check-input field-checkbox" type="checkbox" id="enabled_field_<%= field.id %>" name="enabled_fields" value="<%= field.id %>" <%= selectedFieldIds.includes(field.id) ? 'checked' : '' %> />
                           <label class="form-check-label" for="enabled_field_<%= field.id %>">
                             <%= field.label %> <span class="text-muted">(<code><%= field.key %></code>)</span>
                           </label>
@@ -171,7 +107,7 @@
       </div>
 
       <div class="col-12 actions-row">
-        <button class="btn btn-primary ms-auto" type="submit"><%= t("admin.generateTokenAndGoButton") %></button>
+        <button class="btn btn-primary ms-auto" type="submit"><%= t("admin.saveClientConfigButton") %></button>
       </div>
     </form>
   </div>
@@ -184,23 +120,14 @@
     const fieldCheckboxes = Array.from(document.querySelectorAll(".field-checkbox"));
     const sectionItems = Array.from(document.querySelectorAll(".field-section-item"));
     const toggleButtons = document.querySelectorAll("[data-toggle-fields]");
-
-    function setAll(checked) {
-      fieldCheckboxes.forEach((checkbox) => {
-        checkbox.checked = checked;
-      });
-    }
-
+    function setAll(checked) { fieldCheckboxes.forEach((checkbox) => { checkbox.checked = checked; }); }
     function applyProfileFields(profileId) {
       if (!profileId || !profileFieldMap[profileId]) return false;
       const enabled = new Set((profileFieldMap[profileId] || []).map(String));
-      fieldCheckboxes.forEach((checkbox) => {
-        checkbox.checked = enabled.has(String(checkbox.value));
-      });
+      fieldCheckboxes.forEach((checkbox) => { checkbox.checked = enabled.has(String(checkbox.value)); });
       updateSectionsVisibility(enabled);
       return true;
     }
-
     function updateSectionsVisibility(enabledSet) {
       const hasFilter = enabledSet instanceof Set;
       fieldCheckboxes.forEach((checkbox) => {
@@ -210,7 +137,6 @@
         item.style.display = visible ? "" : "none";
         if (!visible) checkbox.checked = false;
       });
-
       sectionItems.forEach((sectionEl) => {
         const visibleItems = Array.from(sectionEl.querySelectorAll(".field-item")).filter((item) => item.style.display !== "none");
         const countEl = sectionEl.querySelector(".section-count");
@@ -218,14 +144,12 @@
         sectionEl.style.display = visibleItems.length ? "" : "none";
       });
     }
-
     toggleButtons.forEach((button) => {
       button.addEventListener("click", function () {
         updateSectionsVisibility(null);
         setAll(button.dataset.toggleFields === "all");
       });
     });
-
     if (profileSelect) {
       profileSelect.addEventListener("change", function () {
         const profileId = String(profileSelect.value || "");
@@ -234,7 +158,6 @@
           setAll(false);
         }
       });
-
       const initialProfileId = String(profileSelect.value || "");
       if (initialProfileId) {
         profileSelect.dispatchEvent(new Event("change", { bubbles: true }));

@@ -1,6 +1,7 @@
 const db = require("../db");
 const { listFields, getFieldById, validateTypedValue } = require("./fields");
-const { getEnabledFieldIdsForEquipment } = require("./equipments");
+const { getEnabledFieldIdsForEquipment, getEquipmentById } = require("./equipments");
+const { listProfileFieldsForSpecification } = require("./profiles");
 
 function normalizeValueRow(row) {
   return {
@@ -48,7 +49,10 @@ function resolveEffectiveValue(field, savedValueMap) {
 }
 
 async function getEquipmentSpecification(equipmentId, section = null, lang = "en") {
-  const fields = await listFields(section ? { section, lang } : { lang });
+  const equipment = await getEquipmentById(equipmentId);
+  const fields = equipment && equipment.profileId
+    ? await listProfileFieldsForSpecification(equipment.profileId)
+    : await listFields(section ? { section, lang } : { lang });
   const enabledFieldIds = await getEnabledFieldIdsForEquipment(equipmentId);
   const effectiveFields = enabledFieldIds.length
     ? fields.filter((field) => enabledFieldIds.includes(field.id))

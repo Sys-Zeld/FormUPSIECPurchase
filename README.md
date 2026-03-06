@@ -1,4 +1,4 @@
-# UPS Annex D Dynamic Specification Form
+# APP-FORM-UPS-IEC
 
 Projeto full-stack em Node.js (Express + EJS + PostgreSQL) para especificacao de UPS baseada no IEC 62040-3 (Anexo D), com:
 
@@ -44,6 +44,12 @@ Aplicacao: `http://localhost:3000`
 5. Opcionalmente informe um nome em "Salvar selecao atual como novo perfil".
 6. Gere o token; o formulario desse cliente exibira somente os campos habilitados.
 
+## Gestao de perfis de formulario
+
+- Acesse `/admin/profiles` para criar, editar e excluir perfis de anexo formulario.
+- Acesse `/admin/tokens/:id/config` para ajustar campos especificos de um cliente ja criado.
+- Um perfil pode ser aplicado por cliente e os campos habilitados podem ser personalizados por cliente.
+
 ## Anexos PDF
 
 - No final do formulario de especificacao, e possivel anexar PDFs (ex.: desenho unifilar e trifilar).
@@ -51,6 +57,7 @@ Aplicacao: `http://localhost:3000`
 - Apenas PDF e aceito.
 - Os arquivos sao salvos em `dados/docs` (na raiz da aplicacao).
 - O sistema salva no banco o link externo do arquivo, baseado em `APP_BASE_URL`.
+- Em producao, use `APP_BASE_URL` sem porta interna (ex.: `https://form.seudominio.com`).
 
 ## Temas visuais do formulario
 

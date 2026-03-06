@@ -1,5 +1,5 @@
 {
-  "name": "annexd-ups-form",
+  "name": "app-form-ups-iec",
   "version": "1.0.0",
   "description": "Dynamic UPS specification form based on IEC 62040-3 Annex D",
   "main": "src/app.js",
@@ -7,7 +7,8 @@
     "dev": "nodemon src/app.js",
     "start": "node src/app.js",
     "db:migrate": "node scripts/migrate.js",
-    "db:seed": "node scripts/seed.js"
+    "db:seed": "node scripts/seed.js",
+    "db:seed:purchase-profile": "node scripts/seed-profile-purchase.js"
   },
   "keywords": [
     "ups",

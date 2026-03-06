@@ -8,7 +8,7 @@
     </div>
     <div class="d-flex gap-2 flex-wrap">
       <a class="btn btn-primary btn-sm" href="/admin/clients/new"><%= t("admin.newClientButton") %></a>
-      <a class="btn btn-outline-primary btn-sm" href="/admin/fields"><%= t("admin.manageFieldsButton") %></a>
+      <a class="btn btn-outline-primary btn-sm" href="/admin/profiles"><%= t("admin.manageProfilesButton") %></a>
       <form method="post" action="/admin/logout">
         <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
         <button class="btn btn-outline-secondary btn-sm" type="submit"><%= t("admin.logoutButton") %></button>
@@ -19,6 +19,9 @@
 
 <% if (deleted) { %>
   <div class="alert alert-success"><%= t("admin.deletedSuccess") %></div>
+<% } %>
+<% if (saved) { %>
+  <div class="alert alert-success"><%= t("admin.clientConfigSaved") %></div>
 <% } %>
 
 <div class="card app-card">
@@ -55,6 +58,7 @@
               <td>
                 <div class="d-flex gap-2 flex-wrap">
                   <a class="btn btn-outline-primary btn-sm" href="/form/<%= row.token %>/review"><%= t("admin.viewButton") %></a>
+                  <a class="btn btn-outline-secondary btn-sm" href="/admin/tokens/<%= row.id %>/config"><%= t("admin.clientConfigButton") %></a>
                   <form method="post" action="/admin/tokens/<%= row.id %>/delete" onsubmit="return confirm('<%= t("admin.confirmDelete") %>')">
                     <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
                     <button class="btn btn-outline-danger btn-sm" type="submit"><%= t("admin.deleteButton") %></button>
