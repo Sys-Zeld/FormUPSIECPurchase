@@ -42,7 +42,7 @@ function buildSummaryHtmlFromSections(sections, lang) {
   return `<!doctype html><html><body><h2>${t("email.summaryTitle")}</h2>${blocks}</body></html>`;
 }
 
-async function sendSubmissionEmail({ to, submission, sections, pdfBuffer, lang }) {
+async function sendSubmissionEmail({ to, cc, submission, sections, pdfBuffer, lang }) {
   const t = createTranslator(lang);
   const transporter = nodemailer.createTransport({
     host: env.smtp.host,
@@ -61,6 +61,7 @@ async function sendSubmissionEmail({ to, submission, sections, pdfBuffer, lang }
   return transporter.sendMail({
     from: env.smtp.from,
     to,
+    cc: cc && cc.length ? cc : undefined,
     subject: t("email.subject", { token: submission.token }),
     html,
     attachments: [

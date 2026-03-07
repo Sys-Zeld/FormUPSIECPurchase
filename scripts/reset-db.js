@@ -8,6 +8,7 @@ async function run() {
         equipment_documents,
         equipment_enabled_fields,
         equipment_field_values,
+        api_keys,
         field_profile_fields,
         equipments,
         field_profiles,

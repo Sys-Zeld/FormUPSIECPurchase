@@ -115,11 +115,62 @@ body.app-shell {
 
 .app-topbar {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
   align-items: center;
   gap: var(--spacing-4);
   margin-bottom: var(--spacing-4);
   flex-wrap: wrap;
+}
+
+.app-brand {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+.app-brand-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.app-brand-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--text);
+  white-space: nowrap;
+  margin-top: 25px;
+}
+
+.app-brand-version {
+  margin-left: 6px;
+  font-size: 0.66em;
+  font-weight: 600;
+  color: var(--muted-text);
+}
+
+.app-brand-logo {
+  display: block;
+  width: 250px;
+  max-width: 42vw;
+  height: auto;
+}
+
+.app-iec-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 4px;
+  flex: 0 0 auto;
+}
+
+.app-topbar-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-4);
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .topbar-group {
@@ -203,8 +254,13 @@ body.app-shell {
   padding: 4px;
 }
 
-.form-label {
-  color: var(--text);
+:root[data-theme="vextrom"].form-label {
+  color: #ffffff;
+  font-weight: 600;
+  margin-bottom: var(--spacing-2);
+}
+:root[data-theme="soft"].form-label {
+  color: var(--bs-accordion-color);
   font-weight: 600;
   margin-bottom: var(--spacing-2);
 }
@@ -282,7 +338,7 @@ body.app-shell {
 }
 
 :root[data-theme="vextrom"] .field-row-label .form-label {
-  color: #f0f4ef;
+  color: #ffffff;
 }
 
 .field-row-label {
@@ -373,6 +429,7 @@ body.app-shell {
 
 :root[data-theme="vextrom"] .accordion .accordion-item {
   border-color: #5f7167 !important;
+  color: #ffffff;
   box-shadow: 0 2px 10px rgba(20, 30, 25, 0.18);
 }
 
@@ -473,12 +530,14 @@ body.app-shell {
 :root[data-theme="soft"] .btn-outline-secondary {
   background: linear-gradient(180deg, #f0f3f7 0%, #e7edf4 100%);
   border-color: #cbd5e1;
+ 
 }
 
 :root[data-theme="vextrom"] .btn-outline-secondary {
   color: #f1f4f2;
   background: linear-gradient(180deg, #5b6860 0%, #46534b 100%);
   border-color: #5f6f66;
+ 
 }
 
 .btn-outline-secondary:hover,
@@ -499,6 +558,88 @@ body.app-shell {
 .btn.disabled {
   opacity: 0.55;
   cursor: not-allowed;
+}
+
+body.admin-page .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.38rem;
+}
+
+body.admin-page .btn::before {
+  content: "•";
+  width: 1rem;
+  height: 1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+body.admin-page .btn[href*="/new"]::before,
+body.admin-page .btn[formaction*="/create"]::before,
+body.admin-page form[action*="/create"] .btn::before {
+  content: "+";
+}
+
+body.admin-page .btn[href*="?edit="]::before,
+body.admin-page .btn[href*="/config"]::before,
+body.admin-page .btn[href*="/profiles"]::before,
+body.admin-page .btn[href*="/fields"]::before,
+body.admin-page .btn[formaction*="/update"]::before,
+body.admin-page form[action*="/update"] .btn::before {
+  content: "~";
+}
+
+body.admin-page .btn[href*="/form/"]::before,
+body.admin-page .btn[href*="/export"]::before,
+body.admin-page .btn[href*="/pdf"]::before {
+  content: ">";
+}
+
+body.admin-page form[action*="/delete"] .btn::before,
+body.admin-page .btn[formaction*="/delete"]::before,
+body.admin-page .btn[formaction*="/clear"]::before,
+body.admin-page form[action*="/clear"] .btn::before {
+  content: "x";
+}
+
+body.admin-page form[action*="/logout"] .btn::before {
+  content: "<";
+}
+
+body.admin-page .btn[href="/admin/tokens"]::before,
+body.admin-page .btn[href="/admin/fields"]::before,
+body.admin-page .btn[href="/admin/profiles"]::before {
+  content: "<";
+}
+
+body.admin-page .btn[type="submit"]::before {
+  content: "v";
+}
+
+body.admin-page form[action*="/logout"] .btn::before,
+body.admin-page form[action*="/delete"] .btn::before,
+body.admin-page .btn[href*="/new"]::before,
+body.admin-page .btn[formaction*="/create"]::before,
+body.admin-page form[action*="/create"] .btn::before,
+body.admin-page .btn[href*="?edit="]::before,
+body.admin-page .btn[href*="/config"]::before,
+body.admin-page .btn[href*="/profiles"]::before,
+body.admin-page .btn[href*="/fields"]::before,
+body.admin-page .btn[href*="/form/"]::before,
+body.admin-page .btn[href*="/export"]::before,
+body.admin-page .btn[href*="/pdf"]::before,
+body.admin-page form[action*="/clear"] .btn::before,
+body.admin-page .btn[formaction*="/clear"]::before,
+body.admin-page .btn[href="/admin/tokens"]::before,
+body.admin-page .btn[href="/admin/fields"]::before,
+body.admin-page .btn[href="/admin/profiles"]::before {
+  background: rgba(255, 255, 255, 0.22);
 }
 
 .app-table th {
@@ -538,7 +679,7 @@ body.app-shell {
 }
 
 :root[data-theme="vextrom"] .app-table th {
-  color: #d4ddd7;
+  color: #2f3633;
 }
 
 .alert {
@@ -613,6 +754,103 @@ code {
   color: var(--primary-hover);
 }
 
+.app-footer {
+  background: #666666;
+  color: #ffffff;
+  margin-top: 52px;
+  padding: 34px 0 30px;
+}
+
+.app-footer-inner {
+  display: grid;
+  grid-template-columns: 1fr 1.3fr;
+  gap: 34px;
+}
+
+.app-footer-nav {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  padding-right: 34px;
+  border-right: 3px solid rgba(255, 255, 255, 0.9);
+}
+
+.app-footer-nav a {
+  color: #ffffff;
+  text-decoration: none;
+  font-size: 1.03rem;
+  line-height: 1.2;
+}
+
+.app-footer-nav a:hover,
+.app-footer-nav a:focus {
+  text-decoration: underline;
+}
+
+.app-footer-contact {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.app-footer-contact p {
+  margin: 0;
+  color: #ffffff;
+  font-size: 0.98rem;
+}
+
+.app-footer-linkedin {
+  margin-top: 6px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: #7cab43;
+  color: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  text-decoration: none;
+  font-size: 1.05rem;
+}
+
+.app-footer-cert {
+  margin-top: 10px;
+  width: 170px;
+  height: 66px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 8px 10px;
+  color: #bd002f;
+  font-weight: 700;
+}
+
+.app-footer-cert small {
+  color: #8a8a8a;
+  font-weight: 600;
+  font-size: 0.72rem;
+}
+
+.profile-list-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.profile-list-item-actions {
+  width: 100%;
+  margin-top: 0.25rem;
+}
+
+.profile-list-item-actions form {
+  margin: 0;
+}
+
 @media (max-width: 1024px) {
   .field-row {
     grid-template-columns: 1fr;
@@ -637,6 +875,30 @@ code {
     justify-content: center;
   }
 
+  .app-topbar-controls {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .app-brand-wrap {
+    width: 100%;
+    justify-content: center;
+    gap: 10px;
+  }
+
+  .app-brand-title {
+    font-size: 0.78rem;
+  }
+
+  .app-brand-logo {
+    width: 124px;
+  }
+
+  .app-iec-icon {
+    width: 24px;
+    height: 24px;
+  }
+
   .actions-row .btn {
     width: 100%;
   }
@@ -655,5 +917,23 @@ code {
   .form-actions-sticky .btn {
     min-width: 0;
     flex: 1;
+  }
+
+  .app-footer {
+    margin-top: 34px;
+    padding: 24px 0;
+  }
+
+  .app-footer-inner {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+
+  .app-footer-nav {
+    align-items: flex-start;
+    border-right: 0;
+    border-bottom: 2px solid rgba(255, 255, 255, 0.9);
+    padding-right: 0;
+    padding-bottom: 14px;
   }
 }

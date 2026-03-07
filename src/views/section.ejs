@@ -5,15 +5,28 @@
     <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
       <div>
         <h1 class="h4 app-card-title mb-1"><%= t("section.headerTitle") %></h1>
-        <p class="text-muted mb-0">Token: <code class="token-code"><%= equipment.token %></code></p>
+        <p class="text-muted mb-0">Token: <code class="token-code"><%= displayToken || equipment.token %></code></p>
       </div>
       <div class="d-flex flex-column align-items-end gap-2">
-        <img class="header-qr" src="<%= qrDataUrl %>" alt="QR do link da submissao" />
+        <% if (qrDataUrl) { %>
+          <img
+            class="header-qr"
+            src="<%= qrDataUrl %>"
+            data-qr-soft="<%= qrDataUrlSoft %>"
+            data-qr-vextrom="<%= qrDataUrlVextrom %>"
+            alt="QR do link da submissao"
+          />
+        <% } %>
         <div class="d-flex gap-2 flex-wrap justify-content-end">
+          <% if (isAdminAuthenticated) { %>
+            <a class="btn btn-outline-secondary btn-sm" href="/admin/tokens"><%= t("admin.backToTokensButton") %></a>
+          <% } %>
           <button class="btn btn-outline-primary btn-sm" type="submit" form="specificationForm" name="action" value="draft">
             <%= t("section.saveSpecifications") %>
           </button>
-          <a class="btn btn-outline-secondary btn-sm" href="/form/<%= equipment.token %>/review"><%= t("section.goToReview") %></a>
+          <% if (reviewUrl) { %>
+            <a class="btn btn-outline-secondary btn-sm" href="<%= reviewUrl %>"><%= t("section.goToReview") %></a>
+          <% } %>
         </div>
       </div>
     </div>
@@ -147,43 +160,47 @@
         <% }) %>
       </div>
 
-      <div class="card app-card mt-3">
-        <div class="card-body">
-          <h2 class="h6 app-card-title mb-2"><%= t("section.documentsTitle") %></h2>
-          <p class="text-muted mb-3"><%= t("section.documentsHint", { count: docsMaxCount, sizeMb: Math.floor(docsMaxSizeBytes / (1024 * 1024)) }) %></p>
-          <div id="docsFeedback" class="small mb-2"></div>
-          <div class="d-flex gap-2 flex-wrap mb-3">
-            <input id="docsInput" type="file" class="form-control" accept="application/pdf,.pdf" multiple />
-            <button id="docsUploadBtn" class="btn btn-outline-primary" type="button"><%= t("section.documentsUploadButton") %></button>
-          </div>
-          <div class="table-responsive">
-            <table class="table table-sm align-middle mb-0 app-table">
-              <thead>
-                <tr>
-                  <th>Arquivo</th>
-                  <th>Tamanho</th>
-                  <th>Acesso</th>
-                </tr>
-              </thead>
-              <tbody>
-                <% if (!documents || !documents.length) { %>
-                  <tr><td colspan="3" class="text-muted"><%= t("section.documentsNone") %></td></tr>
-                <% } %>
-                <% (documents || []).forEach((doc) => { %>
+      <% if (documentsEnabled !== false) { %>
+        <div class="card app-card mt-3">
+          <div class="card-body">
+            <h2 class="h6 app-card-title mb-2"><%= t("section.documentsTitle") %></h2>
+            <p class="text-muted mb-3"><%= t("section.documentsHint", { count: docsMaxCount, sizeMb: Math.floor(docsMaxSizeBytes / (1024 * 1024)) }) %></p>
+            <div id="docsFeedback" class="small mb-2"></div>
+            <div class="d-flex gap-2 flex-wrap mb-3">
+              <input id="docsInput" type="file" class="form-control" accept="application/pdf,.pdf" multiple />
+              <button id="docsUploadBtn" class="btn btn-outline-primary" type="button"><%= t("section.documentsUploadButton") %></button>
+            </div>
+            <div class="table-responsive">
+              <table class="table table-sm align-middle mb-0 app-table">
+                <thead>
                   <tr>
-                    <td><%= doc.originalName %></td>
-                    <td><%= (doc.sizeBytes / (1024 * 1024)).toFixed(2) %> MB</td>
-                    <td><a class="btn btn-sm btn-outline-secondary" href="<%= doc.externalUrl %>" target="_blank" rel="noreferrer"><%= t("section.documentsOpen") %></a></td>
+                    <th>Arquivo</th>
+                    <th>Tamanho</th>
+                    <th>Acesso</th>
                   </tr>
-                <% }) %>
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  <% if (!documents || !documents.length) { %>
+                    <tr><td colspan="3" class="text-muted"><%= t("section.documentsNone") %></td></tr>
+                  <% } %>
+                  <% (documents || []).forEach((doc) => { %>
+                    <tr>
+                      <td><%= doc.originalName %></td>
+                      <td><%= (doc.sizeBytes / (1024 * 1024)).toFixed(2) %> MB</td>
+                      <td><a class="btn btn-sm btn-outline-secondary" href="<%= doc.externalUrl %>" target="_blank" rel="noreferrer"><%= t("section.documentsOpen") %></a></td>
+                    </tr>
+                  <% }) %>
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
-      </div>
+      <% } %>
 
       <div class="form-actions-sticky">
-        <a class="btn btn-outline-secondary" href="/form/<%= equipment.token %>/review"><%= t("section.cancel") %></a>
+        <% if (reviewUrl) { %>
+          <a class="btn btn-outline-secondary" href="<%= reviewUrl %>"><%= t("section.cancel") %></a>
+        <% } %>
         <button class="btn btn-primary" type="submit" name="action" value="draft"><%= t("section.saveSpecifications") %></button>
       </div>
     </form>
@@ -192,28 +209,72 @@
 
 <script>
   (function () {
+    const form = document.getElementById("specificationForm");
     const uploadBtn = document.getElementById("docsUploadBtn");
     const input = document.getElementById("docsInput");
     const feedback = document.getElementById("docsFeedback");
-    if (!uploadBtn || !input || !feedback) return;
+    if (!form || !uploadBtn || !input || !feedback) return;
 
     const maxCount = <%= docsMaxCount %>;
     const existingCount = <%= (documents || []).length %>;
     const maxSize = <%= docsMaxSizeBytes %>;
     const csrfToken = "<%= csrfToken %>";
-    const uploadUrl = "/form/<%= equipment.token %>/docs/upload";
+    const uploadUrl = "<%= uploadUrl || '' %>";
     const msgs = {
       invalidType: "<%= t('section.documentsInvalidType') %>",
       maxCount: "<%= t('section.documentsMaxCount') %>",
       maxSize: "<%= t('section.documentsMaxSize', { sizeMb: Math.floor(docsMaxSizeBytes / (1024 * 1024)) }) %>",
       uploading: "<%= t('section.documentsUploading') %>",
       success: "<%= t('section.documentsSent') %>",
-      error: "<%= t('section.documentsUploadError') %>"
+      error: "<%= t('section.documentsUploadError') %>",
+      errorEmpty: "<%= t('section.documentsUploadErrorEmpty') %>",
+      errorStorage: "<%= t('section.documentsUploadErrorStorage') %>",
+      errorSession: "<%= t('section.documentsUploadErrorSession') %>",
+      saveError: "<%= t('section.documentsSaveBeforeUploadError') %>"
     };
 
     function setMessage(message, isError) {
       feedback.textContent = message;
       feedback.className = isError ? "small text-danger mb-2" : "small text-success mb-2";
+    }
+
+    async function saveFormDraftBeforeUpload() {
+      if (!form.checkValidity()) {
+        form.classList.add("was-validated");
+        form.reportValidity();
+        return false;
+      }
+
+      const formData = new FormData(form);
+      formData.set("action", "draft");
+      const body = new URLSearchParams(formData);
+
+      const response = await fetch(form.getAttribute("action") || window.location.pathname, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8"
+        },
+        body
+      });
+
+      return response.ok;
+    }
+
+    async function parseUploadErrorMessage(response) {
+      if (response.status === 403) return msgs.errorSession;
+      let payload = null;
+      try {
+        payload = await response.json();
+      } catch (_err) {
+        payload = null;
+      }
+      const code = payload && payload.errorCode ? String(payload.errorCode) : "";
+      if (code === "DOC_FILE_TOO_LARGE" || response.status === 413) return msgs.maxSize;
+      if (code === "DOC_INVALID_TYPE") return msgs.invalidType;
+      if (code === "DOC_MAX_COUNT") return msgs.maxCount;
+      if (code === "DOC_EMPTY_FILE") return msgs.errorEmpty;
+      if (code === "DOC_STORAGE_PERMISSION") return msgs.errorStorage;
+      return msgs.error;
     }
 
     uploadBtn.addEventListener("click", async function () {
@@ -237,6 +298,12 @@
       try {
         uploadBtn.disabled = true;
         setMessage(msgs.uploading, false);
+
+        const saved = await saveFormDraftBeforeUpload();
+        if (!saved) {
+          throw new Error("save failed");
+        }
+
         for (const file of files) {
           const buffer = await file.arrayBuffer();
           const response = await fetch(uploadUrl, {
@@ -249,14 +316,19 @@
             body: buffer
           });
           if (!response.ok) {
-            throw new Error("upload failed");
+            const uploadMessage = await parseUploadErrorMessage(response);
+            throw new Error(uploadMessage);
           }
         }
         setMessage(msgs.success, false);
         window.location.reload();
-      } catch (_err) {
+      } catch (err) {
         uploadBtn.disabled = false;
-        setMessage(msgs.error, true);
+        if (err && err.message === "save failed") {
+          setMessage(msgs.saveError, true);
+          return;
+        }
+        setMessage((err && err.message) || msgs.error, true);
       }
     });
   })();

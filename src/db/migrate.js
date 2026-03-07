@@ -111,6 +111,40 @@ async function migrate() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS token_creation_audit (
+      id BIGSERIAL PRIMARY KEY,
+      equipment_id BIGINT REFERENCES equipments(id) ON DELETE SET NULL,
+      channel TEXT NOT NULL DEFAULT 'admin',
+      ip_hash TEXT,
+      browser_session_hash TEXT,
+      user_agent_hash TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS api_keys (
+      id BIGSERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      key_prefix TEXT NOT NULL,
+      key_hash TEXT NOT NULL UNIQUE,
+      scopes JSONB NOT NULL DEFAULT '[]'::jsonb,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      expires_at TIMESTAMPTZ,
+      last_used_at TIMESTAMPTZ,
+      revoked_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  await db.query(`CREATE INDEX IF NOT EXISTS idx_api_keys_active_hash ON api_keys (is_active, key_hash);`);
 }
 
 module.exports = {

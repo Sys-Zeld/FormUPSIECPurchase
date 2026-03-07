@@ -39,12 +39,12 @@
           <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
           <div class="col-12">
             <label class="form-label">Key (slug)</label>
-            <input class="form-control <%= errors.key ? 'is-invalid' : '' %>" name="key" value="<%= formValues.key || '' %>" required />
+            <input class="form-control <%= errors.key ? 'is-invalid' : '' %>" name="key" value="<%= formValues.key || '' %>" data-key-input required />
             <% if (errors.key) { %><div class="invalid-feedback d-block"><%= errors.key %></div><% } %>
           </div>
           <div class="col-12">
             <label class="form-label">Label</label>
-            <input class="form-control <%= errors.label ? 'is-invalid' : '' %>" name="label" value="<%= formValues.label || '' %>" required />
+            <input class="form-control <%= errors.label ? 'is-invalid' : '' %>" name="label" value="<%= formValues.label || '' %>" data-label-input required />
             <% if (errors.label) { %><div class="invalid-feedback d-block"><%= errors.label %></div><% } %>
           </div>
           <div class="col-12">
@@ -155,6 +155,45 @@
 
 <script>
   (function () {
+    function toSlug(input) {
+      return String(input || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "_")
+        .replace(/^_+|_+$/g, "")
+        .slice(0, 120);
+    }
+
+    const labelInput = document.querySelector("[data-label-input]");
+    const keyInput = document.querySelector("[data-key-input]");
+    let lastGenerated = "";
+
+    if (labelInput && keyInput) {
+      const initial = toSlug(labelInput.value);
+      if (!keyInput.value) {
+        keyInput.value = initial;
+      }
+      lastGenerated = toSlug(keyInput.value);
+
+      labelInput.addEventListener("input", function () {
+        const generated = toSlug(labelInput.value);
+        const currentKey = toSlug(keyInput.value);
+        if (!keyInput.value || currentKey === lastGenerated) {
+          keyInput.value = generated;
+          lastGenerated = generated;
+        }
+      });
+
+      keyInput.addEventListener("input", function () {
+        const sanitized = toSlug(keyInput.value);
+        if (keyInput.value !== sanitized) {
+          keyInput.value = sanitized;
+        }
+        lastGenerated = sanitized;
+      });
+    }
+
     const editId = new URLSearchParams(window.location.search).get("edit");
     if (!editId) return;
     const rows = Array.from(document.querySelectorAll("tr"));

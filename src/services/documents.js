@@ -14,6 +14,7 @@ function ensureDocsDirectory() {
     if (err.code === "EACCES") {
       const permissionError = new Error(`No write permission for docs directory: ${DOCS_DIR}`);
       permissionError.statusCode = 500;
+      permissionError.errorCode = "DOC_STORAGE_PERMISSION";
       throw permissionError;
     }
     throw err;
@@ -81,24 +82,28 @@ async function saveEquipmentDocument({ equipmentId, token, originalName, mimeTyp
   if (docsCount >= MAX_DOCS_PER_EQUIPMENT) {
     const err = new Error("Maximum number of documents reached.");
     err.statusCode = 422;
+    err.errorCode = "DOC_MAX_COUNT";
     throw err;
   }
 
   if (!Buffer.isBuffer(buffer) || !buffer.length) {
     const err = new Error("Empty file.");
     err.statusCode = 422;
+    err.errorCode = "DOC_EMPTY_FILE";
     throw err;
   }
 
   if (buffer.length > MAX_DOC_SIZE_BYTES || Number(sizeBytes || 0) > MAX_DOC_SIZE_BYTES) {
     const err = new Error("File exceeds 10MB.");
     err.statusCode = 422;
+    err.errorCode = "DOC_FILE_TOO_LARGE";
     throw err;
   }
 
   if (!isPdfContent(buffer)) {
     const err = new Error("Only PDF files are allowed.");
     err.statusCode = 422;
+    err.errorCode = "DOC_INVALID_TYPE";
     throw err;
   }
 
@@ -111,6 +116,7 @@ async function saveEquipmentDocument({ equipmentId, token, originalName, mimeTyp
     if (err.code === "EACCES") {
       const permissionError = new Error(`No write permission for file: ${diskPath}`);
       permissionError.statusCode = 500;
+      permissionError.errorCode = "DOC_STORAGE_PERMISSION";
       throw permissionError;
     }
     throw err;

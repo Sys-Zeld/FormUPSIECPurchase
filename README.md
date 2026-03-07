@@ -26,6 +26,38 @@ npm run dev
 
 Aplicacao: `http://localhost:3000`
 
+## Comandos de manutenção APP via NPM
+
+- `npm run dev`: sobe a aplicacao em modo desenvolvimento (`nodemon`).
+- `npm run start`: sobe a aplicacao em modo normal.
+- `npm run db:migrate`: aplica as migracoes do banco.
+- `npm run db:backup-database`: gera backup `.sql` em `dados/backups`.
+- `npm run db:restore-database`: restaura o backup mais recente de `dados/backups`.
+- `npm run db:seed`: aplica seed dos campos (schema dinamico).
+- `npm run db:reset`: limpa tabelas principais e reinicia IDs.
+- `npm run db:reset-schema`: remove e recria o schema `public` (limpeza estrutural total para restore).
+- `npm run db:restore-clean`: executa `db:reset-schema` + `db:restore-database`.
+- `npm run db:reseed`: executa `db:reset` + `db:seed`.
+- `npm run db:seed:purchase-profile`: executa seed do perfil de compra.
+- `npm run api:key:create -- --name "integracao-x" --scopes "fields:read,spec:read,spec:write"`: cria API key.
+- `npm run api:key:list`: lista API keys cadastradas.
+- `npm run api:key:revoke -- 1`: revoga API key por ID.
+- `npm run admin:sessions:clear`: invalida todas as sessoes admin ativas.
+- `npm run admin:public-limit:reset`: reseta o contador de limite do modulo publico (IP/sessao navegador).
+- `npm run teste-cliente`: executa teste de cadastro em lote de clientes (`dados/teste/stress-client-registrations.js`).
+- `npm run teste-perfil-form`: executa teste de cadastro em lote de perfis de formulario (`dados/teste/stress-profile-form-registrations.js`).
+
+## Backup e restore do banco
+
+- Backup:
+  - `npm run db:backup-database`
+- Restore do ultimo backup (mais recente):
+  - `npm run db:restore-database`
+- Restore de arquivo especifico:
+  - `npm run db:restore-database -- "dados/backups/db-backup-2026-03-07T03-43-17-589Z.sql"`
+- Restore limpo (remove schema e depois restaura):
+  - `npm run db:restore-clean`
+
 ## Modelo de dados novo
 
 - `fields`: cadastro dinamico de campos (com secao, tipo, enum e default opcional)
@@ -71,7 +103,7 @@ Aplicacao: `http://localhost:3000`
 ## Seed do Anexo D
 
 - O seed oficial esta em `src/schema/annexD.fields.seed.js`
-- `npm run db:seed` aplica migracao, popula/atualiza todos os campos do Anexo D e cria um equipamento de exemplo
+- `npm run db:seed` popula/atualiza todos os campos do Anexo D
 - O servidor tambem chama `seedAnnexDFields()` no startup para garantir estrutura base
 
 ## Como adicionar/editar campos
@@ -105,4 +137,16 @@ Ao salvar vazio, o valor salvo e removido e a regra volta para default/vazio.
 - `GET /equipment/:id/specification`
 - `PUT /equipment/:id/specification`
 
-Observacao: endpoints mutaveis exigem sessao admin.
+Autenticacao da API:
+
+- Header: `Authorization: Bearer <API_KEY>` (ou `X-API-Key: <API_KEY>`).
+- Escopos:
+  - `fields:read`
+  - `fields:write`
+  - `spec:read`
+  - `spec:write`
+- Sessao admin valida tambem tem acesso (fallback para uso interno no painel).
+
+## Documentacao da API
+
+- Arquivo HTML da documentacao: `api.html`

@@ -30,7 +30,10 @@ module.exports = {
   admin: {
     user: process.env.ADMIN_USER || "admin",
     pass: process.env.ADMIN_PASS || "change-me",
-    sessionSecret: process.env.ADMIN_SESSION_SECRET || "change-me-too"
+    sessionSecret: process.env.ADMIN_SESSION_SECRET || "change-me-too",
+    sessionCookieName: process.env.ADMIN_SESSION_COOKIE_NAME || "admin_session",
+    sessionTtlHours: Math.max(1, Number(process.env.ADMIN_SESSION_TTL_HOURS || 12)),
+    sessionStateFile: process.env.ADMIN_SESSION_STATE_FILE || path.join(process.cwd(), "dados", "admin-session-state.json")
   },
   database: {
     url: process.env.DATABASE_URL || "postgres://postgres:postgres@localhost:5432/formupsiec",
@@ -42,6 +45,10 @@ module.exports = {
     user: process.env.SMTP_USER || "",
     pass: process.env.SMTP_PASS || "",
     from: process.env.SMTP_FROM || "no-reply@example.com"
+  },
+  apiKeys: {
+    pepper: process.env.API_KEY_PEPPER || process.env.ADMIN_SESSION_SECRET || "change-me-too",
+    defaultTtlDays: Math.max(1, Number(process.env.API_KEY_DEFAULT_TTL_DAYS || 365))
   },
   storage: {
     docsDir: process.env.DOCS_DIR || path.join(process.cwd(), "dados", "docs")

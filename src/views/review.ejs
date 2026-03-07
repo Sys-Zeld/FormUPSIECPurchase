@@ -7,8 +7,17 @@
       <p class="text-muted mb-0">Token: <code class="token-code"><%= equipment.token %></code></p>
     </div>
     <div class="d-flex flex-column align-items-end gap-2">
-      <img class="header-qr" src="<%= qrDataUrl %>" alt="QR do link da submissao" />
+      <img
+        class="header-qr"
+        src="<%= qrDataUrl %>"
+        data-qr-soft="<%= qrDataUrlSoft %>"
+        data-qr-vextrom="<%= qrDataUrlVextrom %>"
+        alt="QR do link da submissao"
+      />
       <div class="d-flex gap-2 flex-wrap justify-content-end">
+        <% if (isAdminAuthenticated) { %>
+          <a class="btn btn-outline-secondary btn-sm" href="/admin/tokens"><%= t("admin.backToTokensButton") %></a>
+        <% } %>
         <a class="btn btn-outline-secondary btn-sm" href="/form/<%= equipment.token %>/specification"><%= t("review.backToForm") %></a>
         <a class="btn btn-outline-primary btn-sm" href="/form/<%= equipment.token %>/export.json"><%= t("review.exportJson") %></a>
         <a class="btn btn-primary btn-sm" href="/form/<%= equipment.token %>/pdf"><%= t("review.downloadPdf") %></a>
@@ -19,6 +28,9 @@
 
 <% if (emailSent) { %>
   <div class="alert alert-success"><%= t("review.emailSent") %></div>
+<% } %>
+<% if (emailError) { %>
+  <div class="alert alert-danger"><%= emailError %></div>
 <% } %>
 
 <div class="card app-card mb-3">
@@ -124,13 +136,18 @@
 <div class="card app-card">
   <div class="card-body">
     <h2 class="h6 app-card-title"><%= t("review.sendByEmail") %></h2>
+    <p class="text-muted mb-3"><%= t("review.recipientHint") %></p>
     <form method="post" action="/form/<%= equipment.token %>/send-email" class="row g-3">
       <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
-      <div class="col-md-8">
+      <div class="col-md-6">
         <label for="to" class="form-label"><%= t("review.recipient") %></label>
-        <input id="to" name="to" class="form-control" type="email" required placeholder="cliente@empresa.com" />
+        <input id="to" name="to" class="form-control" type="text" required placeholder="cliente@empresa.com; cliente2@empresa.com" value="<%= formEmailTo || '' %>" />
       </div>
-      <div class="col-md-4 d-grid align-items-end">
+      <div class="col-md-6">
+        <label for="cc" class="form-label"><%= t("review.cc") %></label>
+        <input id="cc" name="cc" class="form-control" type="text" placeholder="compras@empresa.com; engenharia@empresa.com" value="<%= formEmailCc || '' %>" />
+      </div>
+      <div class="col-md-12 d-grid align-items-end">
         <button class="btn btn-success mt-md-4" type="submit"><%= t("review.sendEmailPdf") %></button>
       </div>
     </form>

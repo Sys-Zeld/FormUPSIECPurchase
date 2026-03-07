@@ -1,5 +1,5 @@
 node_modules
-dados
+dados/docs
 .env
 db.sqlite
 src/db/data.sqlite

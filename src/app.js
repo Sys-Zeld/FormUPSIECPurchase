@@ -11,9 +11,20 @@ const env = require("./config/env");
 const { migrate } = require("./db/migrate");
 const { sanitizeInput } = require("./utils/sanitize");
 const { SUPPORTED_LANGS, DEFAULT_LANG, normalizeLang, createTranslator } = require("./i18n");
-const { buildSubmissionQrPayload } = require("./services/qr");
+const { buildSubmissionQrPayload, normalizeQrTheme } = require("./services/qr");
 const { generatePdfBuffer } = require("./services/pdf");
 const { sendSubmissionEmail } = require("./services/email");
+const { getAdminSessionNotBefore } = require("./services/adminSessionState");
+const {
+  MAX_TOKENS_PER_WINDOW,
+  WINDOW_HOURS,
+  isPublicTokenAccessEnabled,
+  setPublicTokenAccessEnabled,
+  hashIdentifier,
+  getClientIp,
+  checkPublicTokenCreationLimit,
+  registerTokenCreationAudit
+} = require("./services/publicTokenAccess");
 const {
   SECTION_ORDER,
   FIELD_TYPES,
@@ -60,12 +71,52 @@ const {
   listEquipmentDocuments,
   saveEquipmentDocument
 } = require("./services/documents");
+const {
+  authenticateApiKey,
+  keyHasScope
+} = require("./services/apiKeys");
 
 const app = express();
 app.set("view engine", "ejs");
 app.set("views", path.join(__dirname, "views"));
+app.set("trust proxy", 1);
+app.disable("x-powered-by");
 
-app.use(helmet({ contentSecurityPolicy: false }));
+const appUsesHttps = String(env.appBaseUrl || "").toLowerCase().startsWith("https://");
+const cspDirectives = {
+  defaultSrc: ["'self'"],
+  baseUri: ["'self'"],
+  formAction: ["'self'"],
+  frameAncestors: ["'none'"],
+  objectSrc: ["'none'"],
+  scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net"],
+  styleSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net"],
+  imgSrc: ["'self'", "data:", "https://vextrom.com.br"],
+  fontSrc: ["'self'", "data:", "https://cdn.jsdelivr.net"],
+  connectSrc: ["'self'"],
+  upgradeInsecureRequests: appUsesHttps ? [] : null
+};
+
+app.use(helmet({
+  contentSecurityPolicy: {
+    useDefaults: false,
+    directives: cspDirectives
+  },
+  crossOriginEmbedderPolicy: false,
+  crossOriginOpenerPolicy: { policy: "same-origin" },
+  crossOriginResourcePolicy: { policy: "same-site" },
+  dnsPrefetchControl: { allow: false },
+  frameguard: { action: "deny" },
+  hsts: appUsesHttps
+    ? {
+      maxAge: 31536000,
+      includeSubDomains: true,
+      preload: true
+    }
+    : false,
+  noSniff: true,
+  referrerPolicy: { policy: "no-referrer" }
+}));
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
 app.use(cookieParser());
@@ -76,6 +127,16 @@ app.use("/dados/docs", express.static(DOCS_DIR));
 const supportedLangSet = new Set(SUPPORTED_LANGS);
 const csrfProtection = csrf({ cookie: true });
 const asyncHandler = (handler) => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
+const ADMIN_SESSION_COOKIE_NAME = env.admin.sessionCookieName;
+const ADMIN_SESSION_TTL_MS = env.admin.sessionTtlHours * 60 * 60 * 1000;
+const ADMIN_SESSION_MAX_CLOCK_SKEW_MS = 5 * 60 * 1000;
+const PUBLIC_BROWSER_SESSION_COOKIE_NAME = "public_token_browser_session";
+const PUBLIC_DRAFT_TOKEN_TTL_MS = 12 * 60 * 60 * 1000;
+const appVersionRaw = String(require("../package.json").version || "0.0.0");
+const appVersionShort = (() => {
+  const [major = "0", minor = "0"] = appVersionRaw.split(".");
+  return `v${major}.${minor}`;
+})();
 
 function resolveLanguage(req) {
   const queryLang = normalizeLang(req.query.lang);
@@ -95,11 +156,14 @@ app.use((req, res, next) => {
   if (normalizeLang(req.cookies.lang) !== lang) {
     res.cookie("lang", lang, { sameSite: "lax", maxAge: 365 * 24 * 60 * 60 * 1000 });
   }
+  res.locals.isAdminAuthenticated = isValidAdminSessionToken(req.cookies[ADMIN_SESSION_COOKIE_NAME]);
   req.lang = lang;
   req.t = createTranslator(lang);
   res.locals.lang = lang;
   res.locals.t = req.t;
   res.locals.currentPath = req.path;
+  res.locals.appVersion = appVersionRaw;
+  res.locals.appVersionShort = appVersionShort;
   next();
 });
 
@@ -107,34 +171,173 @@ function signAdminSessionPayload(payload) {
   return crypto.createHmac("sha256", env.admin.sessionSecret).update(payload).digest("hex");
 }
 
+function safeTimingEqual(a, b) {
+  const buffA = Buffer.from(String(a || ""));
+  const buffB = Buffer.from(String(b || ""));
+  if (buffA.length !== buffB.length) return false;
+  return crypto.timingSafeEqual(buffA, buffB);
+}
+
+function shouldUseSecureCookies(req) {
+  if (req.secure) return true;
+  if (String(req.headers["x-forwarded-proto"] || "").toLowerCase() === "https") return true;
+  return env.appBaseUrl.startsWith("https://");
+}
+
+function getOrCreatePublicBrowserSessionId(req, res) {
+  const existing = sanitizeInput(req.cookies[PUBLIC_BROWSER_SESSION_COOKIE_NAME]);
+  if (existing) return existing;
+  const generated = crypto.randomUUID();
+  res.cookie(PUBLIC_BROWSER_SESSION_COOKIE_NAME, generated, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: shouldUseSecureCookies(req),
+    maxAge: 365 * 24 * 60 * 60 * 1000,
+    path: "/"
+  });
+  return generated;
+}
+
+function createPublicDraftToken() {
+  const now = Date.now();
+  const payloadObject = {
+    issuedAt: now,
+    expiresAt: now + PUBLIC_DRAFT_TOKEN_TTL_MS,
+    nonce: crypto.randomBytes(12).toString("hex")
+  };
+  const encodedPayload = Buffer.from(JSON.stringify(payloadObject), "utf8").toString("base64url");
+  const signature = signAdminSessionPayload(`public_draft:${encodedPayload}`);
+  return Buffer.from(`${encodedPayload}.${signature}`, "utf8").toString("base64url");
+}
+
+function createPublicDisplayToken() {
+  return crypto.randomBytes(8).toString("hex");
+}
+
+function isValidPublicDraftToken(token) {
+  if (!token) return false;
+  let rawToken;
+  try {
+    rawToken = Buffer.from(token, "base64url").toString("utf8");
+  } catch (_err) {
+    return false;
+  }
+  const splitIndex = rawToken.lastIndexOf(".");
+  if (splitIndex <= 0) return false;
+  const encodedPayload = rawToken.slice(0, splitIndex);
+  const signature = rawToken.slice(splitIndex + 1);
+  const expectedSignature = signAdminSessionPayload(`public_draft:${encodedPayload}`);
+  if (!safeTimingEqual(signature, expectedSignature)) return false;
+
+  let payload;
+  try {
+    payload = JSON.parse(Buffer.from(encodedPayload, "base64url").toString("utf8"));
+  } catch (_err) {
+    return false;
+  }
+  if (!payload || typeof payload !== "object") return false;
+  if (!Number.isFinite(payload.issuedAt) || !Number.isFinite(payload.expiresAt)) return false;
+  if (payload.expiresAt <= payload.issuedAt) return false;
+  const now = Date.now();
+  if (payload.issuedAt - now > ADMIN_SESSION_MAX_CLOCK_SKEW_MS) return false;
+  if (now >= payload.expiresAt) return false;
+  return true;
+}
+
 function createAdminSessionToken(username) {
-  const payload = `${username}.${Date.now()}`;
-  const signature = signAdminSessionPayload(payload);
-  return Buffer.from(`${payload}.${signature}`).toString("base64url");
+  const now = Date.now();
+  const payloadObject = {
+    username: String(username || ""),
+    issuedAt: now,
+    expiresAt: now + ADMIN_SESSION_TTL_MS,
+    nonce: crypto.randomBytes(12).toString("hex")
+  };
+  const encodedPayload = Buffer.from(JSON.stringify(payloadObject), "utf8").toString("base64url");
+  const signature = signAdminSessionPayload(encodedPayload);
+  return Buffer.from(`${encodedPayload}.${signature}`, "utf8").toString("base64url");
 }
 
 function isValidAdminSessionToken(token) {
   if (!token) return false;
-  let raw;
+  let rawToken;
   try {
-    raw = Buffer.from(token, "base64url").toString("utf8");
+    rawToken = Buffer.from(token, "base64url").toString("utf8");
   } catch (_err) {
     return false;
   }
-  const parts = raw.split(".");
-  if (parts.length < 3) return false;
-  const signature = parts.pop();
-  const payload = parts.join(".");
-  const expectedSignature = signAdminSessionPayload(payload);
-  const sigA = Buffer.from(signature);
-  const sigB = Buffer.from(expectedSignature);
-  if (sigA.length !== sigB.length) return false;
-  return crypto.timingSafeEqual(sigA, sigB);
+
+  const splitIndex = rawToken.lastIndexOf(".");
+  if (splitIndex <= 0) return false;
+  const encodedPayload = rawToken.slice(0, splitIndex);
+  const signature = rawToken.slice(splitIndex + 1);
+  const expectedSignature = signAdminSessionPayload(encodedPayload);
+  if (!safeTimingEqual(signature, expectedSignature)) return false;
+
+  let payload;
+  try {
+    payload = JSON.parse(Buffer.from(encodedPayload, "base64url").toString("utf8"));
+  } catch (_err) {
+    return false;
+  }
+
+  if (!payload || typeof payload !== "object") return false;
+  if (String(payload.username || "") !== env.admin.user) return false;
+  if (!Number.isFinite(payload.issuedAt) || !Number.isFinite(payload.expiresAt)) return false;
+  if (payload.expiresAt <= payload.issuedAt) return false;
+
+  const now = Date.now();
+  if (payload.issuedAt - now > ADMIN_SESSION_MAX_CLOCK_SKEW_MS) return false;
+  if (now >= payload.expiresAt) return false;
+  const globalNotBefore = getAdminSessionNotBefore();
+  if (payload.issuedAt < globalNotBefore) return false;
+  return true;
 }
 
 function requireAdminAuth(req, res, next) {
-  if (isValidAdminSessionToken(req.cookies.admin_session)) return next();
+  if (isValidAdminSessionToken(req.cookies[ADMIN_SESSION_COOKIE_NAME])) return next();
   return res.redirect("/admin/login");
+}
+
+function extractApiKeyFromRequest(req) {
+  const authHeader = sanitizeInput(req.headers.authorization);
+  if (authHeader && authHeader.toLowerCase().startsWith("bearer ")) {
+    return authHeader.slice("bearer ".length).trim();
+  }
+  return sanitizeInput(req.headers["x-api-key"]);
+}
+
+function requireApiScope(scope) {
+  return asyncHandler(async (req, res, next) => {
+    if (isValidAdminSessionToken(req.cookies[ADMIN_SESSION_COOKIE_NAME])) {
+      return next();
+    }
+
+    const rawApiKey = extractApiKeyFromRequest(req);
+    if (!rawApiKey) {
+      return res.status(401).json({
+        error: "API key required.",
+        errorCode: "API_KEY_REQUIRED"
+      });
+    }
+
+    const apiKey = await authenticateApiKey(rawApiKey);
+    if (!apiKey) {
+      return res.status(401).json({
+        error: "Invalid or expired API key.",
+        errorCode: "API_KEY_INVALID"
+      });
+    }
+
+    if (!keyHasScope(apiKey, scope)) {
+      return res.status(403).json({
+        error: `Missing required scope: ${scope}.`,
+        errorCode: "API_KEY_SCOPE_FORBIDDEN"
+      });
+    }
+
+    req.apiKey = apiKey;
+    return next();
+  });
 }
 
 async function resolveEquipmentByTokenOr404(req, res) {
@@ -243,6 +446,53 @@ function validateClientData(clientData, t) {
     errors.contact_email = t("admin.invalidEmail");
   }
   return errors;
+}
+
+function parseEmailListInput(raw) {
+  return String(raw || "")
+    .split(/[;,]/)
+    .map((item) => sanitizeInput(item).trim())
+    .filter(Boolean);
+}
+
+function isValidEmailAddress(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || ""));
+}
+
+function resolveUiTheme(req) {
+  return normalizeQrTheme(req.cookies.app_theme);
+}
+
+async function buildThemeAwareQrData(token) {
+  const [softQr, vextromQr] = await Promise.all([
+    buildSubmissionQrPayload(token, [], "soft"),
+    buildSubmissionQrPayload(token, [], "vextrom")
+  ]);
+  return {
+    soft: softQr.qrDataUrl,
+    vextrom: vextromQr.qrDataUrl
+  };
+}
+
+async function getSpecificationTemplate(lang = "en") {
+  const fields = await listFields({ lang });
+  const grouped = fields.reduce((acc, field) => {
+    if (!acc[field.section]) acc[field.section] = [];
+    acc[field.section].push(field);
+    return acc;
+  }, {});
+
+  return {
+    equipmentId: null,
+    sections: Object.entries(grouped).map(([sectionName, sectionFields]) => ({
+      section: sectionName,
+      fields: sectionFields.map((field) => ({
+        ...field,
+        effectiveValue: field.hasDefault ? field.defaultValue : null,
+        valueSource: field.hasDefault ? "default" : "empty"
+      }))
+    }))
+  };
 }
 
 async function renderAdminFieldsPage(req, res, options = {}) {
@@ -445,42 +695,72 @@ app.get("/", (req, res) => {
 });
 
 app.get("/admin/login", csrfProtection, (req, res) => {
+  if (isValidAdminSessionToken(req.cookies[ADMIN_SESSION_COOKIE_NAME])) {
+    return res.redirect("/admin/tokens");
+  }
   res.render("admin-login", {
     pageTitle: req.t("admin.loginTitle"),
+    loginRateLimited: req.query.rate === "1",
     invalidCredentials: req.query.error === "1",
     csrfToken: req.csrfToken()
   });
 });
 
-app.post("/admin/login", csrfProtection, (req, res) => {
+const adminLoginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => res.redirect("/admin/login?rate=1")
+});
+
+app.post("/admin/login", csrfProtection, adminLoginLimiter, (req, res) => {
   const username = sanitizeInput(req.body.username);
   const password = sanitizeInput(req.body.password);
-  if (username !== env.admin.user || password !== env.admin.pass) {
+  if (!safeTimingEqual(username, env.admin.user) || !safeTimingEqual(password, env.admin.pass)) {
     return res.redirect("/admin/login?error=1");
   }
-  res.cookie("admin_session", createAdminSessionToken(username), {
+  res.cookie(ADMIN_SESSION_COOKIE_NAME, createAdminSessionToken(username), {
     httpOnly: true,
-    sameSite: "lax",
-    secure: false,
-    maxAge: 12 * 60 * 60 * 1000
+    sameSite: "strict",
+    secure: shouldUseSecureCookies(req),
+    maxAge: ADMIN_SESSION_TTL_MS,
+    path: "/"
   });
   return res.redirect("/admin/tokens");
 });
 
 app.post("/admin/logout", csrfProtection, (req, res) => {
-  res.clearCookie("admin_session");
+  res.clearCookie(ADMIN_SESSION_COOKIE_NAME, {
+    httpOnly: true,
+    sameSite: "strict",
+    secure: shouldUseSecureCookies(req),
+    path: "/"
+  });
   return res.redirect("/admin/login");
 });
 
 app.get("/admin/tokens", csrfProtection, requireAdminAuth, asyncHandler(async (req, res) => {
   const rows = await listEquipments();
+  const publicTokenAccessEnabled = await isPublicTokenAccessEnabled();
   res.render("admin-tokens", {
     pageTitle: req.t("admin.pageTitle"),
     rows,
+    publicTokenAccessEnabled,
+    publicTokenAccessUrl: `${env.appBaseUrl.replace(/\/+$/, "")}/form/public-start`,
+    publicTokenMaxPerWindow: MAX_TOKENS_PER_WINDOW,
+    publicTokenWindowHours: WINDOW_HOURS,
     saved: req.query.saved === "1",
     deleted: req.query.deleted === "1",
     csrfToken: req.csrfToken()
   });
+}));
+
+app.post("/admin/public-token-access/toggle", csrfProtection, requireAdminAuth, asyncHandler(async (req, res) => {
+  const enabledRaw = sanitizeInput(req.body.enabled).toLowerCase();
+  const enabled = enabledRaw === "1" || enabledRaw === "true" || enabledRaw === "on" || enabledRaw === "yes";
+  await setPublicTokenAccessEnabled(enabled);
+  return res.redirect("/admin/tokens");
 }));
 
 app.post("/admin/tokens/:id/delete", csrfProtection, requireAdminAuth, asyncHandler(async (req, res) => {
@@ -839,18 +1119,18 @@ app.post("/admin/fields/:id/delete", csrfProtection, requireAdminAuth, asyncHand
   return res.redirect("/admin/fields?deleted=1");
 }));
 
-app.get("/fields", asyncHandler(async (req, res) => {
+app.get("/fields", requireApiScope("fields:read"), asyncHandler(async (req, res) => {
   const section = sanitizeInput(req.query.section);
   const data = await listFields(section ? { section } : {});
   res.json({ data });
 }));
 
-app.post("/fields", requireAdminAuth, asyncHandler(async (req, res) => {
+app.post("/fields", requireApiScope("fields:write"), asyncHandler(async (req, res) => {
   const created = await createField(req.body || {});
   res.status(201).json({ data: created });
 }));
 
-app.put("/fields/:id", requireAdminAuth, asyncHandler(async (req, res) => {
+app.put("/fields/:id", requireApiScope("fields:write"), asyncHandler(async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) {
     return res.status(400).json({ error: "Invalid id." });
@@ -859,7 +1139,7 @@ app.put("/fields/:id", requireAdminAuth, asyncHandler(async (req, res) => {
   res.json({ data: updated });
 }));
 
-app.delete("/fields/:id", requireAdminAuth, asyncHandler(async (req, res) => {
+app.delete("/fields/:id", requireApiScope("fields:write"), asyncHandler(async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) {
     return res.status(400).json({ error: "Invalid id." });
@@ -869,7 +1149,7 @@ app.delete("/fields/:id", requireAdminAuth, asyncHandler(async (req, res) => {
   return res.status(204).send();
 }));
 
-app.get("/equipment/:id/specification", asyncHandler(async (req, res) => {
+app.get("/equipment/:id/specification", requireApiScope("spec:read"), asyncHandler(async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) {
     return res.status(400).json({ error: "Invalid id." });
@@ -881,7 +1161,7 @@ app.get("/equipment/:id/specification", asyncHandler(async (req, res) => {
   res.json({ data });
 }));
 
-app.put("/equipment/:id/specification", requireAdminAuth, asyncHandler(async (req, res) => {
+app.put("/equipment/:id/specification", requireApiScope("spec:write"), asyncHandler(async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) {
     return res.status(400).json({ error: "Invalid id." });
@@ -898,10 +1178,13 @@ app.get("/form/:token/specification", csrfProtection, asyncHandler(async (req, r
   if (!equipment) return;
   const specification = await getEquipmentSpecification(equipment.id, null, req.lang);
   const documents = await listEquipmentDocuments(equipment.id);
-  const qr = await buildSubmissionQrPayload(equipment.token, []);
+  const qrByTheme = await buildThemeAwareQrData(equipment.token);
+  const initialTheme = resolveUiTheme(req);
   res.render("section", {
     pageTitle: req.t("section.headerTitle"),
     equipment,
+    publicDraftMode: false,
+    displayToken: equipment.token,
     clientValues: {
       purchaser: equipment.purchaser || "",
       purchaser_contact: equipment.purchaserContact || "",
@@ -913,12 +1196,17 @@ app.get("/form/:token/specification", csrfProtection, asyncHandler(async (req, r
     },
     sections: buildSpecificationRenderModel(specification),
     documents,
+    reviewUrl: `/form/${equipment.token}/review`,
+    uploadUrl: `/form/${equipment.token}/docs/upload`,
+    documentsEnabled: true,
     docsMaxCount: MAX_DOCS_PER_EQUIPMENT,
     docsMaxSizeBytes: MAX_DOC_SIZE_BYTES,
     errors: {},
     clientErrors: {},
     saved: req.query.saved === "1",
-    qrDataUrl: qr.qrDataUrl,
+    qrDataUrl: qrByTheme[initialTheme],
+    qrDataUrlSoft: qrByTheme.soft,
+    qrDataUrlVextrom: qrByTheme.vextrom,
     csrfToken: req.csrfToken()
   });
 }));
@@ -935,10 +1223,13 @@ app.post("/form/:token/specification", csrfProtection, asyncHandler(async (req, 
   const parsed = parseSpecificationFormBody(allFields, req.body);
   if (Object.keys(parsed.errors).length > 0 || Object.keys(clientErrors).length > 0) {
     const documents = await listEquipmentDocuments(equipment.id);
-    const qr = await buildSubmissionQrPayload(equipment.token, []);
+    const qrByTheme = await buildThemeAwareQrData(equipment.token);
+    const initialTheme = resolveUiTheme(req);
     return res.status(422).render("section", {
       pageTitle: req.t("section.headerTitle"),
       equipment,
+      publicDraftMode: false,
+      displayToken: equipment.token,
       clientValues: {
         purchaser: clientData.purchaser,
         purchaser_contact: clientData.purchaserContact,
@@ -950,12 +1241,17 @@ app.post("/form/:token/specification", csrfProtection, asyncHandler(async (req, 
       },
       sections: buildSpecificationRenderModel(specification, parsed.submittedValues),
       documents,
+      reviewUrl: `/form/${equipment.token}/review`,
+      uploadUrl: `/form/${equipment.token}/docs/upload`,
+      documentsEnabled: true,
       docsMaxCount: MAX_DOCS_PER_EQUIPMENT,
       docsMaxSizeBytes: MAX_DOC_SIZE_BYTES,
       errors: parsed.errors,
       clientErrors,
       saved: false,
-      qrDataUrl: qr.qrDataUrl,
+      qrDataUrl: qrByTheme[initialTheme],
+      qrDataUrlSoft: qrByTheme.soft,
+      qrDataUrlVextrom: qrByTheme.vextrom,
       csrfToken: req.csrfToken()
     });
   }
@@ -1019,14 +1315,26 @@ app.get("/form/:token/review", csrfProtection, asyncHandler(async (req, res) => 
   if (!equipment) return;
   const specification = await getEquipmentSpecification(equipment.id, null, req.lang);
   const documents = await listEquipmentDocuments(equipment.id);
-  const qr = await buildSubmissionQrPayload(equipment.token, []);
+  const qrByTheme = await buildThemeAwareQrData(equipment.token);
+  const initialTheme = resolveUiTheme(req);
+  const emailErrorMap = {
+    invalid_to: req.t("app.invalidRecipientEmail"),
+    invalid_cc: req.t("app.invalidCcEmail")
+  };
+  const emailErrorKey = sanitizeInput(req.query.email_error).toLowerCase();
+  const emailError = emailErrorMap[emailErrorKey] || "";
   res.render("review", {
     pageTitle: req.t("app.reviewTitle"),
     equipment,
     sections: buildSpecificationRenderModel(specification),
     documents,
     emailSent: req.query.email === "1",
-    qrDataUrl: qr.qrDataUrl,
+    emailError,
+    formEmailTo: sanitizeInput(req.query.to),
+    formEmailCc: sanitizeInput(req.query.cc),
+    qrDataUrl: qrByTheme[initialTheme],
+    qrDataUrlSoft: qrByTheme.soft,
+    qrDataUrlVextrom: qrByTheme.vextrom,
     csrfToken: req.csrfToken()
   });
 }));
@@ -1041,16 +1349,23 @@ const emailLimiter = rateLimit({
 app.post("/form/:token/send-email", csrfProtection, emailLimiter, asyncHandler(async (req, res) => {
   const equipment = await resolveEquipmentByTokenOr404(req, res);
   if (!equipment) return;
-  const to = sanitizeInput(req.body.to);
-  if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
-    return res.status(400).send(req.t("app.invalidRecipientEmail"));
+  const toRaw = sanitizeInput(req.body.to);
+  const ccRaw = sanitizeInput(req.body.cc);
+  const to = parseEmailListInput(toRaw);
+  const cc = parseEmailListInput(ccRaw);
+
+  if (!to.length || to.some((email) => !isValidEmailAddress(email))) {
+    return res.redirect(`/form/${equipment.token}/review?email_error=invalid_to&to=${encodeURIComponent(toRaw)}&cc=${encodeURIComponent(ccRaw)}`);
+  }
+  if (cc.some((email) => !isValidEmailAddress(email))) {
+    return res.redirect(`/form/${equipment.token}/review?email_error=invalid_cc&to=${encodeURIComponent(toRaw)}&cc=${encodeURIComponent(ccRaw)}`);
   }
 
   const specification = await getEquipmentSpecification(equipment.id, null, req.lang);
   const sections = buildSpecificationRenderModel(specification);
   try {
     const pdfBuffer = await generatePdfBuffer({ submission: equipment, sections, lang: req.lang });
-    await sendSubmissionEmail({ to, submission: equipment, sections, pdfBuffer, lang: req.lang });
+    await sendSubmissionEmail({ to, cc, submission: equipment, sections, pdfBuffer, lang: req.lang });
     await updateEquipmentStatus(equipment.id, "sent");
     return res.redirect(`/form/${equipment.token}/review?email=1`);
   } catch (err) {
@@ -1102,6 +1417,158 @@ app.get("/form/start", (req, res) => {
   res.redirect("/admin/clients/new");
 });
 
+app.get("/form/public-start", asyncHandler(async (req, res) => {
+  if (!(await isPublicTokenAccessEnabled())) {
+    return res.status(403).send(req.t("app.publicTokenDisabled"));
+  }
+
+  const ipHash = hashIdentifier(getClientIp(req));
+  const browserSessionId = getOrCreatePublicBrowserSessionId(req, res);
+  const browserSessionHash = hashIdentifier(browserSessionId);
+  const userAgentHash = hashIdentifier(req.headers["user-agent"] || "");
+  const limitState = await checkPublicTokenCreationLimit({
+    ipHash,
+    browserSessionHash
+  });
+
+  if (limitState.blocked) {
+    return res.status(429).send(
+      req.t("app.publicTokenRateLimited", {
+        max: MAX_TOKENS_PER_WINDOW,
+        hours: WINDOW_HOURS
+      })
+    );
+  }
+  await registerTokenCreationAudit({
+    equipmentId: null,
+    channel: "public",
+    ipHash,
+    browserSessionHash,
+    userAgentHash
+  });
+  const draftToken = createPublicDraftToken();
+  return res.redirect(`/form/public/${draftToken}/specification`);
+}));
+
+app.get("/form/public/:draftToken/specification", csrfProtection, asyncHandler(async (req, res) => {
+  const draftToken = sanitizeInput(req.params.draftToken);
+  if (!isValidPublicDraftToken(draftToken)) {
+    return res.status(404).send(req.t("app.submissionNotFound"));
+  }
+
+  const specification = await getSpecificationTemplate(req.lang);
+  res.render("section", {
+    pageTitle: req.t("section.headerTitle"),
+    equipment: {
+      id: null,
+      token: draftToken,
+      purchaser: "",
+      purchaserContact: "",
+      contactEmail: "",
+      contactPhone: "",
+      projectName: "",
+      siteName: "",
+      address: ""
+    },
+    publicDraftMode: true,
+    displayToken: createPublicDisplayToken(),
+    clientValues: {
+      purchaser: "",
+      purchaser_contact: "",
+      contact_email: "",
+      contact_phone: "",
+      project_name: "",
+      site_name: "",
+      address: ""
+    },
+    sections: buildSpecificationRenderModel(specification),
+    documents: [],
+    reviewUrl: "",
+    uploadUrl: "",
+    documentsEnabled: false,
+    docsMaxCount: MAX_DOCS_PER_EQUIPMENT,
+    docsMaxSizeBytes: MAX_DOC_SIZE_BYTES,
+    errors: {},
+    clientErrors: {},
+    saved: false,
+    qrDataUrl: "",
+    qrDataUrlSoft: "",
+    qrDataUrlVextrom: "",
+    csrfToken: req.csrfToken()
+  });
+}));
+
+app.post("/form/public/:draftToken/specification", csrfProtection, asyncHandler(async (req, res) => {
+  const draftToken = sanitizeInput(req.params.draftToken);
+  if (!isValidPublicDraftToken(draftToken)) {
+    return res.status(404).send(req.t("app.submissionNotFound"));
+  }
+
+  const clientData = parseClientDataFromBody(req.body);
+  const clientErrors = validateClientData(clientData, req.t);
+  const specification = await getSpecificationTemplate(req.lang);
+  const allFields = specification.sections.flatMap((section) => section.fields);
+  const parsed = parseSpecificationFormBody(allFields, req.body);
+
+  if (Object.keys(parsed.errors).length > 0 || Object.keys(clientErrors).length > 0) {
+    return res.status(422).render("section", {
+      pageTitle: req.t("section.headerTitle"),
+      equipment: {
+        id: null,
+        token: draftToken,
+        purchaser: "",
+        purchaserContact: "",
+        contactEmail: "",
+        contactPhone: "",
+        projectName: "",
+        siteName: "",
+        address: ""
+      },
+      publicDraftMode: true,
+      displayToken: createPublicDisplayToken(),
+      clientValues: {
+        purchaser: clientData.purchaser,
+        purchaser_contact: clientData.purchaserContact,
+        contact_email: clientData.contactEmail,
+        contact_phone: clientData.contactPhone,
+        project_name: clientData.projectName,
+        site_name: clientData.siteName,
+        address: clientData.address
+      },
+      sections: buildSpecificationRenderModel(specification, parsed.submittedValues),
+      documents: [],
+      reviewUrl: "",
+      uploadUrl: "",
+      documentsEnabled: false,
+      docsMaxCount: MAX_DOCS_PER_EQUIPMENT,
+      docsMaxSizeBytes: MAX_DOC_SIZE_BYTES,
+      errors: parsed.errors,
+      clientErrors,
+      saved: false,
+      qrDataUrl: "",
+      qrDataUrlSoft: "",
+      qrDataUrlVextrom: "",
+      csrfToken: req.csrfToken()
+    });
+  }
+
+  const equipment = await createEquipment({
+    purchaser: clientData.purchaser,
+    purchaserContact: clientData.purchaserContact,
+    contactEmail: clientData.contactEmail,
+    contactPhone: clientData.contactPhone,
+    projectName: clientData.projectName,
+    siteName: clientData.siteName,
+    address: clientData.address
+  });
+  await saveEquipmentSpecification(equipment.id, parsed.values);
+
+  if (sanitizeInput(req.body.action) === "review") {
+    return res.redirect(`/form/${equipment.token}/review`);
+  }
+  return res.redirect(`/form/${equipment.token}/specification?saved=1`);
+}));
+
 app.post("/admin/seed-annexd", csrfProtection, requireAdminAuth, asyncHandler(async (_req, res) => {
   await seedAnnexDFields({ overwrite: true });
   res.redirect("/admin/fields?saved=1");
@@ -1111,8 +1578,22 @@ app.use((err, req, res, next) => {
   if (err.code === "EBADCSRFTOKEN") {
     return res.status(403).send(req.t("app.csrfExpired"));
   }
-  if (err.statusCode && (req.path.startsWith("/fields") || req.path.includes("/docs/upload"))) {
-    return res.status(err.statusCode).json({ error: err.message, details: err.details || null });
+  if (req.path.includes("/docs/upload") && err.type === "entity.too.large") {
+    return res.status(413).json({
+      error: "File exceeds maximum size.",
+      errorCode: "DOC_FILE_TOO_LARGE",
+      details: null
+    });
+  }
+  if (
+    err.statusCode &&
+    (req.path.startsWith("/fields") || req.path.startsWith("/equipment/") || req.path.includes("/docs/upload"))
+  ) {
+    return res.status(err.statusCode).json({
+      error: err.message,
+      errorCode: err.errorCode || null,
+      details: err.details || null
+    });
   }
   return next(err);
 });

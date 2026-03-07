@@ -7,6 +7,9 @@
     <% if (invalidCredentials) { %>
       <div class="alert alert-danger"><%= t("admin.invalidCredentials") %></div>
     <% } %>
+    <% if (loginRateLimited) { %>
+      <div class="alert alert-warning"><%= t("admin.loginRateLimited") %></div>
+    <% } %>
 
     <form method="post" action="/admin/login" class="row g-3">
       <input type="hidden" name="_csrf" value="<%= csrfToken %>" />

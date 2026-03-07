@@ -21,14 +21,14 @@
         <h2 class="h6 app-card-title"><%= t("admin.profilesListTitle") %></h2>
         <div class="list-group list-group-flush">
           <% profiles.forEach((profile) => { %>
-            <div class="list-group-item d-flex justify-content-between align-items-center gap-2">
-              <div>
+            <div class="list-group-item profile-list-item">
+              <div class="profile-list-item-text">
                 <div class="fw-semibold"><%= profile.name %></div>
                 <div class="small text-muted"><%= t("admin.profileStats", { fields: profile.fieldsCount, clients: profile.usageCount }) %></div>
               </div>
-              <div class="d-flex gap-2">
+              <div class="profile-list-item-actions d-flex gap-2">
                 <a class="btn btn-outline-primary btn-sm" href="/admin/profiles?edit=<%= profile.id %>"><%= t("admin.profileEditButton") %></a>
-                <form method="post" action="/admin/profiles/<%= profile.id %>/delete" onsubmit="return confirm('<%= t('admin.profileDeleteConfirm') %>')">
+                <form class="m-0" method="post" action="/admin/profiles/<%= profile.id %>/delete" onsubmit="return confirm('<%= t('admin.profileDeleteConfirm') %>')">
                   <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
                   <button class="btn btn-outline-danger btn-sm" type="submit"><%= t("admin.profileDeleteButton") %></button>
                 </form>
@@ -87,11 +87,11 @@
                     </div>
                     <div class="col-12 col-md-3">
                       <label class="form-label"><%= t("admin.profileFieldLabel") %></label>
-                      <input class="form-control" name="new_field_label" value="<%= newFieldValues.label || '' %>" />
+                      <input class="form-control" name="new_field_label" value="<%= newFieldValues.label || '' %>" data-new-field-label />
                     </div>
                     <div class="col-12 col-md-3">
                       <label class="form-label">Key</label>
-                      <input class="form-control" name="new_field_key" value="<%= newFieldValues.key || '' %>" />
+                      <input class="form-control" name="new_field_key" value="<%= newFieldValues.key || '' %>" data-new-field-key />
                     </div>
                     <div class="col-12 col-md-3">
                       <label class="form-label"><%= t("admin.profileFieldType") %></label>
@@ -259,6 +259,45 @@
 
 <script>
   (function () {
+    function toSlug(input) {
+      return String(input || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "_")
+        .replace(/^_+|_+$/g, "")
+        .slice(0, 120);
+    }
+
+    const newFieldLabelInput = document.querySelector("[data-new-field-label]");
+    const newFieldKeyInput = document.querySelector("[data-new-field-key]");
+    let lastGenerated = "";
+
+    if (newFieldLabelInput && newFieldKeyInput) {
+      const initial = toSlug(newFieldLabelInput.value);
+      if (!newFieldKeyInput.value) {
+        newFieldKeyInput.value = initial;
+      }
+      lastGenerated = toSlug(newFieldKeyInput.value);
+
+      newFieldLabelInput.addEventListener("input", function () {
+        const generated = toSlug(newFieldLabelInput.value);
+        const currentKey = toSlug(newFieldKeyInput.value);
+        if (!newFieldKeyInput.value || currentKey === lastGenerated) {
+          newFieldKeyInput.value = generated;
+          lastGenerated = generated;
+        }
+      });
+
+      newFieldKeyInput.addEventListener("input", function () {
+        const sanitized = toSlug(newFieldKeyInput.value);
+        if (newFieldKeyInput.value !== sanitized) {
+          newFieldKeyInput.value = sanitized;
+        }
+        lastGenerated = sanitized;
+      });
+    }
+
     const applyBtn = document.getElementById("applyBulkSectionBtn");
     const sectionInput = document.getElementById("bulk_section_name");
     const feedback = document.getElementById("bulkSectionFeedback");
