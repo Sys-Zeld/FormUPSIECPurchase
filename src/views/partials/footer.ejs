@@ -51,7 +51,9 @@
         if (themeSelector) {
           themeSelector.value = currentTheme;
           themeSelector.addEventListener("change", function () {
-            var nextTheme = themeSelector.value === "vextrom" ? "vextrom" : "soft";
+            var nextTheme = ["soft", "vextrom"].indexOf(themeSelector.value) >= 0
+              ? themeSelector.value
+              : "soft";
             document.documentElement.setAttribute("data-theme", nextTheme);
             updateThemeQr(nextTheme);
             persistThemeCookie(nextTheme);

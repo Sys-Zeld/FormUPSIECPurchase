@@ -179,6 +179,21 @@ async function migrate() {
     );
   `);
   await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_users_username_unique ON admin_users (username);`);
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS public_token_links (
+      id BIGSERIAL PRIMARY KEY,
+      slug TEXT NOT NULL UNIQUE,
+      profile_id BIGINT NOT NULL REFERENCES field_profiles(id) ON DELETE CASCADE,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  await db.query(`ALTER TABLE public_token_links ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;`);
+  await db.query(`ALTER TABLE public_token_links ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();`);
+  await db.query(`ALTER TABLE public_token_links ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();`);
+  await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_public_token_links_slug_unique ON public_token_links (slug);`);
+  await db.query(`CREATE INDEX IF NOT EXISTS idx_public_token_links_profile_id ON public_token_links (profile_id);`);
 }
 
 module.exports = {

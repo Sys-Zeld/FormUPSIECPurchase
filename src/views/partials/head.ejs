@@ -13,7 +13,8 @@
         } catch (_err) {
           storedTheme = null;
         }
-        var theme = storedTheme === "soft" ? "soft" : "vextrom";
+        var allowedThemes = ["soft", "vextrom"];
+        var theme = allowedThemes.indexOf(storedTheme) >= 0 ? storedTheme : "vextrom";
         document.documentElement.setAttribute("data-theme", theme);
       })();
     </script>
@@ -29,7 +30,7 @@
             <img class="app-brand-logo" src="/public/img/logo-vextrom.svg" alt="Vextrom" />
           </a>
           <span class="app-brand-title">
-            TOOL UPS IEC SPECIFICATION
+            <%= t("head.brandTitle") %>
             <small class="app-brand-version"><%= appVersionShort %></small>
           </span>
           <img class="app-iec-icon" src="/public/img/iec-icon.svg" alt="IEC" />

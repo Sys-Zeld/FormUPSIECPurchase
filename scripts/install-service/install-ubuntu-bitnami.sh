@@ -7,9 +7,9 @@ set -euo pipefail
 #
 # Ajuste os valores abaixo antes de executar.
 
-APP_DIR="/var/www/formulario"
-APP_USER="deploy"
-APP_GROUP="www-data"
+APP_DIR="/opt/vextrom/"
+APP_USER="admin"
+APP_GROUP="bitnami"
 APP_PORT="3000"
 APP_DOMAIN="seu-dominio.com"
 APP_BASE_URL="https://seu-dominio.com"

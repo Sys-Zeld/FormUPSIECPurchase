@@ -19,9 +19,9 @@
       <div class="d-flex gap-2 flex-wrap justify-content-end">
         <% if (isAdminAuthenticated) { %>
           <a class="btn btn-outline-secondary btn-sm" href="/admin/tokens"><%= t("admin.backToTokensButton") %></a>
+          <a class="btn btn-outline-primary btn-sm" href="/form/<%= equipment.token %>/export.json"><%= t("review.exportJson") %></a>
         <% } %>
         <a class="btn btn-outline-secondary btn-sm" href="/form/<%= equipment.token %>/specification"><%= t("review.backToForm") %></a>
-        <a class="btn btn-outline-primary btn-sm" href="/form/<%= equipment.token %>/export.json"><%= t("review.exportJson") %></a>
         <a class="btn btn-primary btn-sm" href="/form/<%= equipment.token %>/pdf"><%= t("review.downloadPdf") %></a>
       </div>
     </div>

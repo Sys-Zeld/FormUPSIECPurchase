@@ -44,6 +44,15 @@
 <% if (userDeleteResult) { %>
   <div class="alert <%= userDeleteResult.ok ? 'alert-success' : 'alert-danger' %>"><%= userDeleteResult.message %></div>
 <% } %>
+<div class="card app-card mb-4">
+  <div class="card-body">
+    <h2 class="h6 app-card-title mb-2"><%= t("admin.publicTokenModuleTitle") %></h2>
+    <p class="text-muted mb-3"><%= t("admin.publicTokenHelp", { max: publicTokenMaxPerWindow, hours: publicTokenWindowHours }) %></p>
+    <div class="d-flex gap-2 flex-wrap align-items-center">
+      <a class="btn btn-primary btn-sm" href="/admin/public-token-links"><%= t("admin.publicTokenManageLinksButton") %></a>
+    </div>
+  </div>
+</div>
 
 <div class="card app-card mb-4">
   <div class="card-body">

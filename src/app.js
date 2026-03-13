@@ -28,13 +28,19 @@ const {
 const {
   MAX_TOKENS_PER_WINDOW,
   WINDOW_HOURS,
-  isPublicTokenAccessEnabled,
-  setPublicTokenAccessEnabled,
   hashIdentifier,
   getClientIp,
   checkPublicTokenCreationLimit,
   registerTokenCreationAudit
 } = require("./services/publicTokenAccess");
+const {
+  listPublicTokenLinks,
+  getPublicTokenLinkById,
+  getPublicTokenLinkBySlug,
+  createPublicTokenLink,
+  setPublicTokenLinkActive,
+  deletePublicTokenLinkById
+} = require("./services/publicTokenLinks");
 const {
   SECTION_ORDER,
   FIELD_TYPES,
@@ -65,6 +71,7 @@ const {
   getProfileById,
   getProfileFieldIds,
   listProfileEditableFields,
+  listProfileFieldsForSpecification,
   createProfile,
   updateProfile,
   deleteProfile,
@@ -718,6 +725,120 @@ function parseImportedProfilePayload(input) {
   return { name, fields };
 }
 
+function parseImportedSubmissionPayload(input) {
+  const raw = String(input || "").trim();
+  if (!raw) {
+    const err = new Error("JSON vazio.");
+    err.statusCode = 422;
+    throw err;
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (_err) {
+    const err = new Error("JSON invalido.");
+    err.statusCode = 422;
+    throw err;
+  }
+
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    const err = new Error("Estrutura de JSON invalida.");
+    err.statusCode = 422;
+    throw err;
+  }
+
+  const meta = parsed.meta && typeof parsed.meta === "object" ? parsed.meta : {};
+  const client = parsed.client && typeof parsed.client === "object" ? parsed.client : {};
+  const configuration = parsed.configuration && typeof parsed.configuration === "object" ? parsed.configuration : {};
+
+  const sections = Array.isArray(parsed.sections) ? parsed.sections : [];
+  if (!sections.length) {
+    const err = new Error("O campo 'sections' deve conter ao menos um item.");
+    err.statusCode = 422;
+    throw err;
+  }
+
+  const values = {};
+  sections.forEach((section) => {
+    const fields = Array.isArray(section && section.fields) ? section.fields : [];
+    fields.forEach((field) => {
+      const fieldId = Number(field && field.id);
+      if (!Number.isInteger(fieldId) || fieldId <= 0) return;
+      if (Object.prototype.hasOwnProperty.call(field, "value")) {
+        values[fieldId] = field.value;
+      }
+    });
+  });
+
+  if (!Object.keys(values).length) {
+    const err = new Error("Nenhum campo valido foi encontrado no JSON.");
+    err.statusCode = 422;
+    throw err;
+  }
+
+  return {
+    token: sanitizeInput(meta.token || ""),
+    clientData: {
+      purchaser: sanitizeInput(client.purchaser || ""),
+      purchaserContact: sanitizeInput(client.purchaserContact || client.purchaser_contact || ""),
+      contactEmail: sanitizeInput(client.contactEmail || client.contact_email || ""),
+      contactPhone: sanitizeInput(client.contactPhone || client.contact_phone || ""),
+      projectName: sanitizeInput(client.projectName || client.project_name || ""),
+      siteName: sanitizeInput(client.siteName || client.site_name || ""),
+      address: sanitizeInput(client.address || "")
+    },
+    configuration: {
+      profileId: Number.isInteger(Number(configuration.profileId ?? configuration.profile_id))
+        && Number(configuration.profileId ?? configuration.profile_id) > 0
+        ? Number(configuration.profileId ?? configuration.profile_id)
+        : null,
+      enabledFieldIds: Array.isArray(configuration.enabledFieldIds ?? configuration.enabled_field_ids)
+        ? (configuration.enabledFieldIds ?? configuration.enabled_field_ids)
+          .map((item) => Number(item))
+          .filter((item) => Number.isInteger(item) && item > 0)
+        : null
+    },
+    values
+  };
+}
+
+function buildSubmissionExportPayload(equipment, specification, enabledFieldIds = []) {
+  return {
+    meta: {
+      token: equipment.token,
+      status: equipment.status,
+      created_at: equipment.createdAt,
+      updated_at: equipment.updatedAt,
+      exported_at: dayjs().toISOString()
+    },
+    client: {
+      purchaser: equipment.purchaser || "",
+      purchaserContact: equipment.purchaserContact || "",
+      contactEmail: equipment.contactEmail || "",
+      contactPhone: equipment.contactPhone || "",
+      projectName: equipment.projectName || "",
+      siteName: equipment.siteName || "",
+      address: equipment.address || ""
+    },
+    configuration: {
+      profile_id: equipment.profileId || null,
+      enabled_field_ids: Array.isArray(enabledFieldIds) ? enabledFieldIds : []
+    },
+    sections: specification.sections.map((section) => ({
+      section: section.section,
+      fields: section.fields.map((field) => ({
+        id: field.id,
+        key: field.key,
+        label: field.label,
+        unit: field.unit || null,
+        value: field.effectiveValue,
+        source: field.valueSource || "empty"
+      }))
+    }))
+  };
+}
+
 function buildProfileExportPayload(profile, fields) {
   const normalizedFields = (Array.isArray(fields) ? fields : []).map((field, index) => ({
     key: field.key,
@@ -951,6 +1072,52 @@ async function getSpecificationTemplate(lang = "en") {
   };
 }
 
+async function getSpecificationTemplateForProfile(profileId) {
+  const fields = await listProfileFieldsForSpecification(profileId);
+  const grouped = fields.reduce((acc, field) => {
+    if (!acc[field.section]) acc[field.section] = [];
+    acc[field.section].push(field);
+    return acc;
+  }, {});
+
+  return {
+    equipmentId: null,
+    sections: Object.entries(grouped).map(([sectionName, sectionFields]) => ({
+      section: sectionName,
+      fields: sectionFields.map((field) => ({
+        ...field,
+        effectiveValue: field.hasDefault ? field.defaultValue : null,
+        valueSource: field.hasDefault ? "default" : "empty"
+      }))
+    }))
+  };
+}
+
+async function renderAdminPublicTokenLinksPage(req, res, options = {}) {
+  const [profiles, links] = await Promise.all([
+    listProfiles(),
+    listPublicTokenLinks()
+  ]);
+
+  res.status(options.statusCode || 200).render("admin-public-token-links", {
+    pageTitle: req.t("admin.publicTokenLinksTitle"),
+    profiles,
+    links,
+    formValues: {
+      profile_id: options.formValues?.profile_id || ""
+    },
+    formErrors: options.formErrors || {},
+    created: req.query.created === "1",
+    deleted: req.query.deleted === "1",
+    toggled: req.query.toggled === "1",
+    flashError: options.flashError || null,
+    publicTokenWindowHours: WINDOW_HOURS,
+    publicTokenMaxPerWindow: MAX_TOKENS_PER_WINDOW,
+    appBaseUrl: env.appBaseUrl.replace(/\/+$/, ""),
+    csrfToken: req.csrfToken()
+  });
+}
+
 async function renderAdminFieldsPage(req, res, options = {}) {
   const groupedMap = await listSectionsWithFields({ lang: req.lang });
   const presentSections = Object.keys(groupedMap).filter((section) => !SECTION_ORDER.includes(section));
@@ -1135,6 +1302,62 @@ async function renderAdminApiKeysPage(req, res, options = {}) {
   });
 }
 
+async function renderAdminTokensPage(req, res, options = {}) {
+  const requestedPage = Number(sanitizeInput(req.query.page));
+  const pageSize = 20;
+  const page = Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+  const search = sanitizeInput(req.query.search || "");
+  const normalizedSearch = normalizeSearchText(search);
+
+  const allRows = await listEquipments();
+  const filteredRows = normalizedSearch
+    ? allRows
+      .map((row, index) => {
+        const source = `${row.purchaser || ""} ${row.purchaserContact || ""}`;
+        return { row, index, score: smartSearchScore(source, normalizedSearch) };
+      })
+      .filter((item) => item.score >= 0.45)
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        return a.index - b.index;
+      })
+      .map((item) => item.row)
+    : allRows;
+
+  const total = filteredRows.length;
+  const totalPages = total > 0 ? Math.ceil(total / pageSize) : 1;
+  const safePage = Math.min(page, totalPages);
+  const start = (safePage - 1) * pageSize;
+  const rows = filteredRows.slice(start, start + pageSize);
+  const paginationQuery = new URLSearchParams();
+  if (search) paginationQuery.set("search", search);
+  const paginationQuerySuffix = paginationQuery.toString()
+    ? `&${paginationQuery.toString()}`
+    : "";
+  res.status(options.statusCode || 200).render("admin-tokens", {
+    pageTitle: req.t("admin.pageTitle"),
+    rows,
+    filters: {
+      search
+    },
+    pagination: {
+      page: safePage,
+      pageSize,
+      total,
+      totalPages,
+      hasPrev: safePage > 1,
+      hasNext: safePage < totalPages,
+      querySuffix: paginationQuerySuffix
+    },
+    saved: req.query.saved === "1",
+    deleted: req.query.deleted === "1",
+    imported: req.query.imported === "1",
+    importJsonResult: options.importJsonResult || null,
+    importJsonPayload: options.importJsonPayload || "",
+    csrfToken: req.csrfToken()
+  });
+}
+
 function buildSpecificationRenderModel(specification, submittedValues = {}) {
   return specification.sections.map((section) => ({
     section: section.section,
@@ -1229,61 +1452,144 @@ app.post("/admin/logout", csrfProtection, (req, res) => {
 });
 
 app.get("/admin/tokens", csrfProtection, requireAdminAuth, asyncHandler(async (req, res) => {
-  const requestedPage = Number(sanitizeInput(req.query.page));
-  const pageSize = 20;
-  const page = Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
-  const search = sanitizeInput(req.query.search || "");
-  const normalizedSearch = normalizeSearchText(search);
+  await renderAdminTokensPage(req, res);
+}));
 
-  const allRows = await listEquipments();
-  const filteredRows = normalizedSearch
-    ? allRows
-      .map((row, index) => {
-        const source = `${row.purchaser || ""} ${row.purchaserContact || ""}`;
-        return { row, index, score: smartSearchScore(source, normalizedSearch) };
-      })
-      .filter((item) => item.score >= 0.45)
-      .sort((a, b) => {
-        if (b.score !== a.score) return b.score - a.score;
-        return a.index - b.index;
-      })
-      .map((item) => item.row)
-    : allRows;
+app.post("/admin/tokens/import-json", csrfProtection, requireAdminAuth, asyncHandler(async (req, res) => {
+  const rawPayload = String(req.body.json_payload || "");
+  const importAction = sanitizeInput(req.body.import_action || "inspect").toLowerCase();
 
-  const total = filteredRows.length;
-  const totalPages = total > 0 ? Math.ceil(total / pageSize) : 1;
-  const safePage = Math.min(page, totalPages);
-  const start = (safePage - 1) * pageSize;
-  const rows = filteredRows.slice(start, start + pageSize);
-  const paginationQuery = new URLSearchParams();
-  if (search) paginationQuery.set("search", search);
-  const paginationQuerySuffix = paginationQuery.toString()
-    ? `&${paginationQuery.toString()}`
-    : "";
-  const publicTokenAccessEnabled = await isPublicTokenAccessEnabled();
-  res.render("admin-tokens", {
-    pageTitle: req.t("admin.pageTitle"),
-    rows,
-    filters: {
-      search
-    },
-    pagination: {
-      page: safePage,
-      pageSize,
-      total,
-      totalPages,
-      hasPrev: safePage > 1,
-      hasNext: safePage < totalPages,
-      querySuffix: paginationQuerySuffix
-    },
-    publicTokenAccessEnabled,
-    publicTokenAccessUrl: `${env.appBaseUrl.replace(/\/+$/, "")}/form/public-start`,
-    publicTokenMaxPerWindow: MAX_TOKENS_PER_WINDOW,
-    publicTokenWindowHours: WINDOW_HOURS,
-    saved: req.query.saved === "1",
-    deleted: req.query.deleted === "1",
-    csrfToken: req.csrfToken()
+  let imported;
+  try {
+    imported = parseImportedSubmissionPayload(rawPayload);
+  } catch (_err) {
+    await renderAdminTokensPage(req, res, {
+      statusCode: 422,
+      importJsonPayload: rawPayload,
+      importJsonResult: {
+        status: "error",
+        message: req.t("admin.tokenImportInvalid")
+      }
+    });
+    return;
+  }
+
+  const existingEquipment = imported.token ? await getEquipmentByToken(imported.token) : null;
+
+  if (importAction === "apply_existing") {
+    if (!existingEquipment) {
+      await renderAdminTokensPage(req, res, {
+        statusCode: 404,
+        importJsonPayload: rawPayload,
+        importJsonResult: {
+          status: "missing",
+          token: imported.token,
+          message: req.t("admin.tokenImportTokenMissing", { token: imported.token || "-" }),
+          canCreate: true
+        }
+      });
+      return;
+    }
+
+    const enabledFieldIds = Array.isArray(imported.configuration.enabledFieldIds)
+      ? imported.configuration.enabledFieldIds
+      : await getEnabledFieldIdsForEquipment(existingEquipment.id);
+
+    await updateEquipmentConfiguration(existingEquipment.id, {
+      ...imported.clientData,
+      profileId: imported.configuration.profileId,
+      enabledFieldIds
+    });
+    await saveEquipmentSpecification(existingEquipment.id, imported.values);
+    return res.redirect(`/form/${existingEquipment.token}/specification?imported=1`);
+  }
+
+  if (importAction === "create_new") {
+    const created = await createEquipment({
+      ...imported.clientData,
+      profileId: imported.configuration.profileId,
+      enabledFieldIds: imported.configuration.enabledFieldIds
+    });
+    await saveEquipmentSpecification(created.id, imported.values);
+    return res.redirect(`/form/${created.token}/specification?imported=1`);
+  }
+
+  if (existingEquipment) {
+    await renderAdminTokensPage(req, res, {
+      importJsonPayload: rawPayload,
+      importJsonResult: {
+        status: "found",
+        token: existingEquipment.token,
+        message: req.t("admin.tokenImportTokenFound", { token: existingEquipment.token }),
+        reviewUrl: `/form/${existingEquipment.token}/review`,
+        editUrl: `/form/${existingEquipment.token}/specification`
+      }
+    });
+    return;
+  }
+
+  await renderAdminTokensPage(req, res, {
+    importJsonPayload: rawPayload,
+    importJsonResult: {
+      status: "missing",
+      token: imported.token,
+      message: req.t("admin.tokenImportTokenMissing", { token: imported.token || "-" }),
+      canCreate: true
+    }
   });
+}));
+
+app.get("/admin/public-token-links", csrfProtection, requireAdminAuth, requireMaintenanceAdmin, asyncHandler(async (req, res) => {
+  await renderAdminPublicTokenLinksPage(req, res);
+}));
+
+app.post("/admin/public-token-links/create", csrfProtection, requireAdminAuth, requireMaintenanceAdmin, asyncHandler(async (req, res) => {
+  const profileIdRaw = sanitizeInput(req.body.profile_id);
+  const profileId = Number(profileIdRaw);
+  const formValues = { profile_id: profileIdRaw };
+  const formErrors = {};
+
+  if (!Number.isInteger(profileId) || profileId <= 0) {
+    formErrors.profile_id = req.t("admin.invalidId");
+  } else {
+    const profile = await getProfileById(profileId);
+    if (!profile) {
+      formErrors.profile_id = req.t("admin.invalidId");
+    }
+  }
+
+  if (Object.keys(formErrors).length > 0) {
+    await renderAdminPublicTokenLinksPage(req, res, {
+      statusCode: 422,
+      formValues,
+      formErrors
+    });
+    return;
+  }
+
+  await createPublicTokenLink(profileId);
+  return res.redirect("/admin/public-token-links?created=1");
+}));
+
+app.post("/admin/public-token-links/:id/toggle", csrfProtection, requireAdminAuth, requireMaintenanceAdmin, asyncHandler(async (req, res) => {
+  const id = Number(sanitizeInput(req.params.id));
+  const link = await getPublicTokenLinkById(id);
+  if (!link) {
+    return sendStandardError(req, res, 404);
+  }
+
+  await setPublicTokenLinkActive(link.id, !link.isActive);
+  return res.redirect("/admin/public-token-links?toggled=1");
+}));
+
+app.post("/admin/public-token-links/:id/delete", csrfProtection, requireAdminAuth, requireMaintenanceAdmin, asyncHandler(async (req, res) => {
+  const id = Number(sanitizeInput(req.params.id));
+  const deleted = await deletePublicTokenLinkById(id);
+  if (!deleted) {
+    return sendStandardError(req, res, 404);
+  }
+
+  return res.redirect("/admin/public-token-links?deleted=1");
 }));
 
 app.get("/admin/maintenance", csrfProtection, requireAdminAuth, requireMaintenanceAdmin, asyncHandler(async (req, res) => {
@@ -1297,6 +1603,8 @@ app.get("/admin/maintenance", csrfProtection, requireAdminAuth, requireMaintenan
     userDeleteResult: null,
     users,
     backups,
+    publicTokenMaxPerWindow: MAX_TOKENS_PER_WINDOW,
+    publicTokenWindowHours: WINDOW_HOURS,
     envAdminUser: env.admin.user,
     csrfToken: req.csrfToken()
   });
@@ -1649,13 +1957,6 @@ app.post("/admin/maintenance/admin-users/:id/delete", csrfProtection, requireAdm
     envAdminUser: env.admin.user,
     csrfToken: req.csrfToken()
   });
-}));
-
-app.post("/admin/public-token-access/toggle", csrfProtection, requireAdminAuth, asyncHandler(async (req, res) => {
-  const enabledRaw = sanitizeInput(req.body.enabled).toLowerCase();
-  const enabled = enabledRaw === "1" || enabledRaw === "true" || enabledRaw === "on" || enabledRaw === "yes";
-  await setPublicTokenAccessEnabled(enabled);
-  return res.redirect("/admin/tokens");
 }));
 
 app.post("/admin/tokens/:id/delete", csrfProtection, requireAdminAuth, asyncHandler(async (req, res) => {
@@ -2500,32 +2801,14 @@ app.get("/form/:token/pdf", asyncHandler(async (req, res) => {
   res.send(pdfBuffer);
 }));
 
-app.get("/form/:token/export.json", asyncHandler(async (req, res) => {
+app.get("/form/:token/export.json", requireAdminAuth, asyncHandler(async (req, res) => {
   const equipment = await resolveEquipmentByTokenOr404(req, res);
   if (!equipment) return;
   const specification = await getEquipmentSpecification(equipment.id, null, req.lang);
-  const sections = buildSpecificationRenderModel(specification);
-  const payload = {
-    meta: {
-      token: equipment.token,
-      status: equipment.status,
-      created_at: equipment.createdAt,
-      updated_at: equipment.updatedAt,
-      exported_at: dayjs().toISOString()
-    },
-    sections: sections.map((section) => ({
-      section: section.section,
-      fields: section.fields.map((field) => ({
-        id: field.id,
-        key: field.key,
-        label: field.label,
-        unit: field.unit || null,
-        value: field.displayValue,
-        source: field.cameFromDefault ? "default" : "saved_or_empty"
-      }))
-    }))
-  };
+  const enabledFieldIds = await getEnabledFieldIdsForEquipment(equipment.id);
+  const payload = buildSubmissionExportPayload(equipment, specification, enabledFieldIds);
   res.setHeader("Content-Type", "application/json");
+  res.setHeader("Content-Disposition", `attachment; filename=submission-${equipment.token}.json`);
   res.send(JSON.stringify(payload, null, 2));
 }));
 
@@ -2534,8 +2817,14 @@ app.get("/form/start", (req, res) => {
 });
 
 app.get("/form/public-start", asyncHandler(async (req, res) => {
-  if (!(await isPublicTokenAccessEnabled())) {
-    return sendStandardError(req, res, 403);
+  return sendStandardError(req, res, 404);
+}));
+
+app.get("/form/public/:linkSlug/start", asyncHandler(async (req, res) => {
+  const linkSlug = sanitizeInput(req.params.linkSlug);
+  const link = await getPublicTokenLinkBySlug(linkSlug);
+  if (!link || !link.isActive) {
+    return sendStandardError(req, res, 404);
   }
 
   const ipHash = hashIdentifier(getClientIp(req));
@@ -2552,13 +2841,147 @@ app.get("/form/public-start", asyncHandler(async (req, res) => {
   }
   await registerTokenCreationAudit({
     equipmentId: null,
-    channel: "public",
+    channel: "public-link",
     ipHash,
     browserSessionHash,
     userAgentHash
   });
   const draftToken = createPublicDraftToken();
-  return res.redirect(`/form/public/${draftToken}/specification`);
+  return res.redirect(`/form/public/${link.slug}/${draftToken}/specification`);
+}));
+
+app.get("/form/public/:linkSlug/:draftToken/specification", csrfProtection, asyncHandler(async (req, res) => {
+  const linkSlug = sanitizeInput(req.params.linkSlug);
+  const draftToken = sanitizeInput(req.params.draftToken);
+  if (!isValidPublicDraftToken(draftToken)) {
+    return sendStandardError(req, res, 404);
+  }
+
+  const link = await getPublicTokenLinkBySlug(linkSlug);
+  if (!link || !link.isActive) {
+    return sendStandardError(req, res, 404);
+  }
+
+  const specification = await getSpecificationTemplateForProfile(link.profileId);
+  res.render("section", {
+    pageTitle: req.t("section.headerTitle"),
+    equipment: {
+      id: null,
+      token: draftToken,
+      purchaser: "",
+      purchaserContact: "",
+      contactEmail: "",
+      contactPhone: "",
+      projectName: "",
+      siteName: "",
+      address: ""
+    },
+    publicDraftMode: true,
+    displayToken: createPublicDisplayToken(),
+    clientValues: {
+      purchaser: "",
+      purchaser_contact: "",
+      contact_email: "",
+      contact_phone: "",
+      project_name: "",
+      site_name: "",
+      address: ""
+    },
+    sections: buildSpecificationRenderModel(specification),
+    documents: [],
+    reviewUrl: "",
+    uploadUrl: "",
+    documentsEnabled: false,
+    docsMaxCount: MAX_DOCS_PER_EQUIPMENT,
+    docsMaxSizeBytes: MAX_DOC_SIZE_BYTES,
+    errors: {},
+    clientErrors: {},
+    saved: false,
+    qrDataUrl: "",
+    qrDataUrlSoft: "",
+    qrDataUrlVextrom: "",
+    csrfToken: req.csrfToken()
+  });
+}));
+
+app.post("/form/public/:linkSlug/:draftToken/specification", csrfProtection, asyncHandler(async (req, res) => {
+  const linkSlug = sanitizeInput(req.params.linkSlug);
+  const draftToken = sanitizeInput(req.params.draftToken);
+  if (!isValidPublicDraftToken(draftToken)) {
+    return sendStandardError(req, res, 404);
+  }
+
+  const link = await getPublicTokenLinkBySlug(linkSlug);
+  if (!link || !link.isActive) {
+    return sendStandardError(req, res, 404);
+  }
+
+  const clientData = parseClientDataFromBody(req.body);
+  const clientErrors = validateClientData(clientData, req.t);
+  const specification = await getSpecificationTemplateForProfile(link.profileId);
+  const allFields = specification.sections.flatMap((section) => section.fields);
+  const parsed = parseSpecificationFormBody(allFields, req.body);
+
+  if (Object.keys(parsed.errors).length > 0 || Object.keys(clientErrors).length > 0) {
+    return res.status(422).render("section", {
+      pageTitle: req.t("section.headerTitle"),
+      equipment: {
+        id: null,
+        token: draftToken,
+        purchaser: "",
+        purchaserContact: "",
+        contactEmail: "",
+        contactPhone: "",
+        projectName: "",
+        siteName: "",
+        address: ""
+      },
+      publicDraftMode: true,
+      displayToken: createPublicDisplayToken(),
+      clientValues: {
+        purchaser: clientData.purchaser,
+        purchaser_contact: clientData.purchaserContact,
+        contact_email: clientData.contactEmail,
+        contact_phone: clientData.contactPhone,
+        project_name: clientData.projectName,
+        site_name: clientData.siteName,
+        address: clientData.address
+      },
+      sections: buildSpecificationRenderModel(specification, parsed.submittedValues),
+      documents: [],
+      reviewUrl: "",
+      uploadUrl: "",
+      documentsEnabled: false,
+      docsMaxCount: MAX_DOCS_PER_EQUIPMENT,
+      docsMaxSizeBytes: MAX_DOC_SIZE_BYTES,
+      errors: parsed.errors,
+      clientErrors,
+      saved: false,
+      qrDataUrl: "",
+      qrDataUrlSoft: "",
+      qrDataUrlVextrom: "",
+      csrfToken: req.csrfToken()
+    });
+  }
+
+  const enabledFieldIds = await getProfileFieldIds(link.profileId);
+  const equipment = await createEquipment({
+    purchaser: clientData.purchaser,
+    purchaserContact: clientData.purchaserContact,
+    contactEmail: clientData.contactEmail,
+    contactPhone: clientData.contactPhone,
+    projectName: clientData.projectName,
+    siteName: clientData.siteName,
+    address: clientData.address,
+    profileId: link.profileId,
+    enabledFieldIds
+  });
+  await saveEquipmentSpecification(equipment.id, parsed.values);
+
+  if (sanitizeInput(req.body.action) === "review") {
+    return res.redirect(`/form/${equipment.token}/review`);
+  }
+  return res.redirect(`/form/${equipment.token}/specification?saved=1`);
 }));
 
 app.get("/form/public/:draftToken/specification", csrfProtection, asyncHandler(async (req, res) => {
