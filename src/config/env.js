@@ -27,6 +27,7 @@ module.exports = {
   nodeEnv,
   port: Number(process.env.PORT || 3000),
   appBaseUrl,
+  moduleSpecEnabled: String(process.env.MODULE_SPEC_ENABLED || "false").toLowerCase() === "true",
   admin: {
     user: process.env.ADMIN_USER || "admin",
     pass: process.env.ADMIN_PASS || "change-me",

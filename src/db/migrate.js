@@ -1,4 +1,5 @@
 const db = require("./index");
+const env = require("../config/env");
 
 async function migrate() {
   await db.query(`
@@ -194,6 +195,11 @@ async function migrate() {
   await db.query(`ALTER TABLE public_token_links ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();`);
   await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_public_token_links_slug_unique ON public_token_links (slug);`);
   await db.query(`CREATE INDEX IF NOT EXISTS idx_public_token_links_profile_id ON public_token_links (profile_id);`);
+
+  if (env.moduleSpecEnabled) {
+    const { migrateModuleSpec } = require("../../module_spec/src/migrations");
+    await migrateModuleSpec();
+  }
 }
 
 module.exports = {

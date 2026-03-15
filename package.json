@@ -6,6 +6,9 @@
   "scripts": {
     "dev": "nodemon src/app.js",
     "start": "node src/app.js",
+    "test:module-spec": "node --test module_spec/tests/*.test.js",
+    "module-spec:enable": "node scripts/module-spec-toggle.js enable",
+    "module-spec:disable": "node scripts/module-spec-toggle.js disable",
     "db:migrate": "node scripts/migrate.js",
     "db:backup-database": "node scripts/backup-database.js",
     "db:restore-database": "node scripts/restore-database.js",

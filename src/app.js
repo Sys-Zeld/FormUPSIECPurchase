@@ -103,6 +103,20 @@ const {
 } = require("./services/backups");
 const { generateProfileJsonFromDocument } = require("./services/aiProfiles");
 
+let registerModuleSpec = null;
+let moduleSpecRepo = null;
+let moduleSpecValidateMappingsPayload = null;
+let moduleSpecExecuteSimpleFilter = null;
+
+if (env.moduleSpecEnabled) {
+  ({ registerModuleSpec } = require("../module_spec/src/app"));
+  moduleSpecRepo = require("../module_spec/src/repositories/simpleRepository");
+  ({
+    validateMappingsPayload: moduleSpecValidateMappingsPayload,
+    executeSimpleFilter: moduleSpecExecuteSimpleFilter
+  } = require("../module_spec/src/services/simpleFilterService"));
+}
+
 const app = express();
 app.set("view engine", "ejs");
 app.set("views", path.join(__dirname, "views"));
@@ -216,6 +230,7 @@ app.use((req, res, next) => {
     res.locals.currentPath = req.path;
     res.locals.appVersion = appVersionRaw;
     res.locals.appVersionShort = appVersionShort;
+    res.locals.moduleSpecEnabled = env.moduleSpecEnabled;
     next();
   }).catch(next);
 });
@@ -1358,6 +1373,75 @@ async function renderAdminTokensPage(req, res, options = {}) {
   });
 }
 
+function parseModuleSpecJsonInput(raw, fallback) {
+  const text = String(raw || "").trim();
+  if (!text) return fallback;
+  return JSON.parse(text);
+}
+
+async function renderAdminModuleSpecPage(req, res, options = {}) {
+  const [families, models, attributeDefinitions, profiles] = await Promise.all([
+    moduleSpecRepo.listFamilies(),
+    moduleSpecRepo.listModels(),
+    moduleSpecRepo.listAttributeDefinitions(),
+    listProfiles()
+  ]);
+
+  const editFamilyId = Number(req.query.edit_family || options.editFamilyId || 0);
+  const editModelId = Number(req.query.edit_model || options.editModelId || 0);
+  const editVariantId = Number(req.query.edit_variant || options.editVariantId || 0);
+  const editAttributeId = Number(req.query.edit_attribute || options.editAttributeId || 0);
+  const profileId = Number(req.query.profile_id || options.profileId || 0);
+
+  const selectedFamily = Number.isInteger(editFamilyId) && editFamilyId > 0
+    ? await moduleSpecRepo.getFamilyById(editFamilyId).catch(() => null)
+    : null;
+  const selectedModel = Number.isInteger(editModelId) && editModelId > 0
+    ? await moduleSpecRepo.getModelById(editModelId).catch(() => null)
+    : null;
+  const selectedVariant = Number.isInteger(editVariantId) && editVariantId > 0
+    ? await moduleSpecRepo.getVariantById(editVariantId).catch(() => null)
+    : null;
+  const selectedAttribute = Number.isInteger(editAttributeId) && editAttributeId > 0
+    ? await moduleSpecRepo.getAttributeDefinitionById(editAttributeId).catch(() => null)
+    : null;
+
+  const variants = selectedModel
+    ? await moduleSpecRepo.listVariantsByModelId(selectedModel.id).catch(() => [])
+    : [];
+  const variantAttributes = selectedVariant
+    ? await moduleSpecRepo.listVariantAttributes(selectedVariant.id).catch(() => [])
+    : [];
+  const mappings = Number.isInteger(profileId) && profileId > 0
+    ? await moduleSpecRepo.listProfileFilterMappings(profileId).catch(() => [])
+    : [];
+
+  return res.status(options.statusCode || 200).render("admin-module-spec", {
+    pageTitle: "Module Spec - Filtro de Selecao",
+    families,
+    models,
+    attributeDefinitions,
+    profiles,
+    selectedFamily,
+    selectedModel,
+    selectedVariant,
+    selectedAttribute,
+    variants,
+    variantAttributes,
+    profileId,
+    mappings,
+    flags: {
+      saved: req.query.saved === "1",
+      deleted: req.query.deleted === "1",
+      filtered: req.query.filtered === "1"
+    },
+    flashError: options.flashError || "",
+    filterResult: options.filterResult || null,
+    formValues: options.formValues || {},
+    csrfToken: req.csrfToken()
+  });
+}
+
 function buildSpecificationRenderModel(specification, submittedValues = {}) {
   return specification.sections.map((section) => ({
     section: section.section,
@@ -2476,6 +2560,292 @@ app.post("/admin/fields/:id/delete", csrfProtection, requireAdminAuth, asyncHand
   return res.redirect("/admin/fields?deleted=1");
 }));
 
+if (env.moduleSpecEnabled) {
+  app.get("/admin/module-spec", csrfProtection, requireAdminAuth, asyncHandler(async (req, res) => {
+    await renderAdminModuleSpecPage(req, res);
+  }));
+
+app.post("/admin/module-spec/families/create", csrfProtection, requireAdminAuth, asyncHandler(async (req, res) => {
+  try {
+    await moduleSpecRepo.createFamily({
+      key: sanitizeInput(req.body.key).toLowerCase(),
+      name: sanitizeInput(req.body.name),
+      description: sanitizeInput(req.body.description || ""),
+      status: sanitizeInput(req.body.status || "active")
+    });
+    return res.redirect("/admin/module-spec?saved=1");
+  } catch (err) {
+    return renderAdminModuleSpecPage(req, res, {
+      statusCode: err.statusCode || 422,
+      flashError: err.message,
+      formValues: { category: req.body }
+    });
+  }
+}));
+
+app.post("/admin/module-spec/families/:id/update", csrfProtection, requireAdminAuth, asyncHandler(async (req, res) => {
+  const id = Number(req.params.id);
+  try {
+    await moduleSpecRepo.updateFamily(id, {
+      key: sanitizeInput(req.body.key).toLowerCase(),
+      name: sanitizeInput(req.body.name),
+      description: sanitizeInput(req.body.description || ""),
+      status: sanitizeInput(req.body.status || "active")
+    });
+    return res.redirect(`/admin/module-spec?edit_family=${id}&saved=1`);
+  } catch (err) {
+    return renderAdminModuleSpecPage(req, res, {
+      statusCode: err.statusCode || 422,
+      editFamilyId: id,
+      flashError: err.message
+    });
+  }
+}));
+
+app.post("/admin/module-spec/families/:id/delete", csrfProtection, requireAdminAuth, asyncHandler(async (req, res) => {
+  const id = Number(req.params.id);
+  try {
+    await moduleSpecRepo.deleteFamily(id);
+    return res.redirect("/admin/module-spec?deleted=1");
+  } catch (err) {
+    return renderAdminModuleSpecPage(req, res, {
+      statusCode: err.statusCode || 422,
+      flashError: err.message
+    });
+  }
+}));
+
+app.post("/admin/module-spec/attributes/create", csrfProtection, requireAdminAuth, asyncHandler(async (req, res) => {
+  try {
+    await moduleSpecRepo.createAttributeDefinition({
+      key: sanitizeInput(req.body.key).toLowerCase(),
+      label: sanitizeInput(req.body.label),
+      dataType: sanitizeInput(req.body.data_type).toLowerCase(),
+      unit: sanitizeInput(req.body.unit),
+      allowedValuesJson: parseModuleSpecJsonInput(req.body.allowed_values_json, []),
+      description: sanitizeInput(req.body.description || ""),
+      status: sanitizeInput(req.body.status || "active")
+    });
+    return res.redirect("/admin/module-spec?saved=1");
+  } catch (err) {
+    return renderAdminModuleSpecPage(req, res, {
+      statusCode: err.statusCode || 422,
+      flashError: err.message,
+      formValues: { attribute: req.body }
+    });
+  }
+}));
+
+app.post("/admin/module-spec/attributes/:id/update", csrfProtection, requireAdminAuth, asyncHandler(async (req, res) => {
+  const id = Number(req.params.id);
+  try {
+    await moduleSpecRepo.updateAttributeDefinition(id, {
+      key: sanitizeInput(req.body.key).toLowerCase(),
+      label: sanitizeInput(req.body.label),
+      dataType: sanitizeInput(req.body.data_type).toLowerCase(),
+      unit: sanitizeInput(req.body.unit),
+      allowedValuesJson: parseModuleSpecJsonInput(req.body.allowed_values_json, []),
+      description: sanitizeInput(req.body.description || ""),
+      status: sanitizeInput(req.body.status || "active")
+    });
+    return res.redirect(`/admin/module-spec?edit_attribute=${id}&saved=1`);
+  } catch (err) {
+    return renderAdminModuleSpecPage(req, res, {
+      statusCode: err.statusCode || 422,
+      editAttributeId: id,
+      flashError: err.message
+    });
+  }
+}));
+
+app.post("/admin/module-spec/attributes/:id/delete", csrfProtection, requireAdminAuth, asyncHandler(async (req, res) => {
+  const id = Number(req.params.id);
+  try {
+    await moduleSpecRepo.deleteAttributeDefinition(id);
+    return res.redirect("/admin/module-spec?deleted=1");
+  } catch (err) {
+    return renderAdminModuleSpecPage(req, res, {
+      statusCode: err.statusCode || 422,
+      flashError: err.message
+    });
+  }
+}));
+
+app.post("/admin/module-spec/models/create", csrfProtection, requireAdminAuth, asyncHandler(async (req, res) => {
+  try {
+    await moduleSpecRepo.createModel({
+      familyId: Number(req.body.family_id),
+      manufacturer: sanitizeInput(req.body.manufacturer),
+      brand: sanitizeInput(req.body.brand),
+      model: sanitizeInput(req.body.model),
+      sku: sanitizeInput(req.body.sku),
+      description: sanitizeInput(req.body.description),
+      status: sanitizeInput(req.body.status) || "active"
+    });
+    return res.redirect("/admin/module-spec?saved=1");
+  } catch (err) {
+    return renderAdminModuleSpecPage(req, res, {
+      statusCode: err.statusCode || 422,
+      flashError: err.message,
+      formValues: { model: req.body }
+    });
+  }
+}));
+
+app.post("/admin/module-spec/models/:id/update", csrfProtection, requireAdminAuth, asyncHandler(async (req, res) => {
+  const id = Number(req.params.id);
+  try {
+    await moduleSpecRepo.updateModel(id, {
+      familyId: Number(req.body.family_id),
+      manufacturer: sanitizeInput(req.body.manufacturer),
+      brand: sanitizeInput(req.body.brand),
+      model: sanitizeInput(req.body.model),
+      sku: sanitizeInput(req.body.sku),
+      description: sanitizeInput(req.body.description),
+      status: sanitizeInput(req.body.status) || "active"
+    });
+    return res.redirect(`/admin/module-spec?edit_model=${id}&saved=1`);
+  } catch (err) {
+    return renderAdminModuleSpecPage(req, res, {
+      statusCode: err.statusCode || 422,
+      editModelId: id,
+      flashError: err.message
+    });
+  }
+}));
+
+app.post("/admin/module-spec/models/:id/delete", csrfProtection, requireAdminAuth, asyncHandler(async (req, res) => {
+  const id = Number(req.params.id);
+  try {
+    await moduleSpecRepo.deleteModel(id);
+    return res.redirect("/admin/module-spec?deleted=1");
+  } catch (err) {
+    return renderAdminModuleSpecPage(req, res, {
+      statusCode: err.statusCode || 422,
+      flashError: err.message
+    });
+  }
+}));
+
+app.post("/admin/module-spec/models/:id/variants/create", csrfProtection, requireAdminAuth, asyncHandler(async (req, res) => {
+  const modelId = Number(req.params.id);
+  try {
+    await moduleSpecRepo.createVariant(modelId, {
+      variantName: sanitizeInput(req.body.variant_name),
+      variantCode: sanitizeInput(req.body.variant_code),
+      status: sanitizeInput(req.body.status || "active")
+    });
+    return res.redirect(`/admin/module-spec?edit_model=${modelId}&saved=1`);
+  } catch (err) {
+    return renderAdminModuleSpecPage(req, res, {
+      statusCode: err.statusCode || 422,
+      editModelId: modelId,
+      flashError: err.message
+    });
+  }
+}));
+
+app.post("/admin/module-spec/variants/:id/update", csrfProtection, requireAdminAuth, asyncHandler(async (req, res) => {
+  const id = Number(req.params.id);
+  try {
+    const updated = await moduleSpecRepo.updateVariant(id, {
+      variantName: sanitizeInput(req.body.variant_name),
+      variantCode: sanitizeInput(req.body.variant_code),
+      status: sanitizeInput(req.body.status) || "active"
+    });
+    return res.redirect(`/admin/module-spec?edit_model=${updated.equipmentModelId}&edit_variant=${id}&saved=1`);
+  } catch (err) {
+    return renderAdminModuleSpecPage(req, res, {
+      statusCode: err.statusCode || 422,
+      flashError: err.message,
+      editVariantId: id
+    });
+  }
+}));
+
+app.post("/admin/module-spec/variants/:id/delete", csrfProtection, requireAdminAuth, asyncHandler(async (req, res) => {
+  const id = Number(req.params.id);
+  try {
+    const variant = await moduleSpecRepo.getVariantById(id);
+    await moduleSpecRepo.deleteVariant(id);
+    return res.redirect(`/admin/module-spec?edit_model=${variant ? variant.equipmentModelId : ""}&deleted=1`);
+  } catch (err) {
+    return renderAdminModuleSpecPage(req, res, {
+      statusCode: err.statusCode || 422,
+      flashError: err.message
+    });
+  }
+}));
+
+app.post("/admin/module-spec/variants/:id/attributes", csrfProtection, requireAdminAuth, asyncHandler(async (req, res) => {
+  const id = Number(req.params.id);
+  try {
+    const attributes = parseModuleSpecJsonInput(req.body.attributes_json, []);
+    await moduleSpecRepo.replaceVariantAttributes(id, attributes);
+    const variant = await moduleSpecRepo.getVariantById(id);
+    return res.redirect(`/admin/module-spec?edit_model=${variant ? variant.equipmentModelId : ""}&edit_variant=${id}&saved=1`);
+  } catch (err) {
+    return renderAdminModuleSpecPage(req, res, {
+      statusCode: err.statusCode || 422,
+      editVariantId: id,
+      flashError: err.message
+    });
+  }
+}));
+
+app.post("/admin/module-spec/profiles/:profileId/mappings", csrfProtection, requireAdminAuth, asyncHandler(async (req, res) => {
+  const profileId = Number(req.params.profileId);
+  try {
+    const mappings = await moduleSpecValidateMappingsPayload(profileId, parseModuleSpecJsonInput(req.body.mappings_json, []));
+    await moduleSpecRepo.replaceProfileFilterMappings(profileId, mappings);
+    return res.redirect(`/admin/module-spec?profile_id=${profileId}&saved=1`);
+  } catch (err) {
+    return renderAdminModuleSpecPage(req, res, {
+      statusCode: err.statusCode || 422,
+      profileId,
+      flashError: err.message
+    });
+  }
+}));
+
+app.post("/admin/module-spec/profiles/:profileId/filter-test", csrfProtection, requireAdminAuth, asyncHandler(async (req, res) => {
+  const profileId = Number(req.params.profileId);
+  try {
+    const filterResult = await moduleSpecExecuteSimpleFilter({
+      profileId,
+      required: parseModuleSpecJsonInput(req.body.required_json, {})
+    });
+    return renderAdminModuleSpecPage(req, res, { profileId, filterResult });
+  } catch (err) {
+    return renderAdminModuleSpecPage(req, res, {
+      statusCode: err.statusCode || 422,
+      profileId,
+      flashError: err.message
+    });
+  }
+}));
+
+  app.get("/admin/module-spec/profiles/:id/fields", requireAdminAuth, asyncHandler(async (req, res) => {
+    const profileId = Number(req.params.id);
+    if (!Number.isInteger(profileId) || profileId <= 0) return sendStandardError(req, res, 400, { json: true });
+    const profile = await getProfileById(profileId);
+    if (!profile) return sendStandardError(req, res, 404, { json: true });
+    const fields = await listProfileFieldsForSpecification(profileId);
+    return res.json({
+      data: {
+        profileId: profile.id,
+        profileName: profile.name,
+        fields: fields.map((field) => ({
+          id: field.id,
+          key: field.key,
+          label: field.label,
+          fieldType: field.fieldType
+        }))
+      }
+    });
+  }));
+}
+
 app.get("/fields", requireApiScope("fields:read"), asyncHandler(async (req, res) => {
   const section = sanitizeInput(req.query.section);
   const data = await listFields(section ? { section } : {});
@@ -3108,6 +3478,13 @@ app.post("/admin/seed-annexd", csrfProtection, requireAdminAuth, asyncHandler(as
   res.redirect("/admin/fields?saved=1");
 }));
 
+if (env.moduleSpecEnabled && registerModuleSpec) {
+  registerModuleSpec(app, {
+    asyncHandler,
+    requireApiScope
+  });
+}
+
 app.use((err, req, res, next) => {
   if (err.code === "EBADCSRFTOKEN") {
     return sendStandardError(req, res, 403);
@@ -3132,6 +3509,7 @@ app.use((err, req, res, next) => {
     (
       req.path.startsWith("/fields")
       || req.path.startsWith("/equipment/")
+      || req.path.startsWith("/api/module-spec/")
       || req.path.includes("/docs/upload")
       || req.path.includes("/admin/maintenance/restore-import")
     )
@@ -3148,6 +3526,7 @@ app.use((err, req, res, next) => {
   if (
     req.path.startsWith("/fields")
     || req.path.startsWith("/equipment/")
+    || req.path.startsWith("/api/module-spec/")
     || req.path.includes("/docs/upload")
     || req.path.includes("/admin/maintenance/restore-import")
   ) {

@@ -11,6 +11,9 @@
       <div class="token-hero-actions">
         <a class="btn btn-primary btn-sm" href="/admin/clients/new"><%= t("admin.newClientButton") %></a>
         <a class="btn btn-outline-primary btn-sm" href="/admin/profiles"><%= t("admin.manageProfilesButton") %></a>
+        <% if (moduleSpecEnabled) { %>
+          <a class="btn btn-outline-secondary btn-sm" href="/admin/module-spec">Module Spec</a>
+        <% } %>
         <% if (isMaintenanceAdmin) { %>
           <a class="btn btn-outline-danger btn-sm" href="/admin/maintenance">Manutencao</a>
         <% } %>
